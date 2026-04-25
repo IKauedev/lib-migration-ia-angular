@@ -1,4 +1,7 @@
-import { sendToProvider, sendChatToProvider } from "./ai-providers.js";
+import { z } from "zod";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { buildModel, TASK_TYPES } from "./langchain-provider.js";
+import { dbgAI } from "./debug.js";
 
 const SYSTEM_PROMPT = `Você é um especialista sênior em migração de AngularJS (Angular 1.x) para Angular 21 moderno.
 
@@ -53,38 +56,142 @@ MUDANÇAS:
 NOTAS:
 [avisos importantes, dependências necessárias, etc]`;
 
-export async function migrateWithAI(code, tipo = "auto", contexto = "") {
-  const userMsg = contexto
-    ? `Tipo solicitado: ${tipo}\nContexto adicional: ${contexto}\n\nCódigo para migrar:\n\`\`\`\n${code}\n\`\`\``
-    : `Tipo solicitado: ${tipo}\n\nCódigo para migrar:\n\`\`\`\n${code}\n\`\`\``;
+// ── Zod schemas ───────────────────────────────────────────────────────────────
 
-  return sendToProvider(SYSTEM_PROMPT, userMsg, { maxTokens: 4096 });
+const MigrationSchema = z.object({
+  tipo: z
+    .enum([
+      "controller",
+      "service",
+      "filter",
+      "directive",
+      "template",
+      "factory",
+      "misto",
+    ])
+    .describe("Tipo do componente AngularJS identificado"),
+  padroes: z
+    .array(z.string())
+    .describe("Lista de padrões AngularJS detectados no código"),
+  codigoOriginal: z
+    .string()
+    .describe("Código original AngularJS sem nenhuma alteração"),
+  codigoMigrado: z
+    .string()
+    .describe("Código Angular 21 completo após migração"),
+  mudancas: z
+    .array(z.string())
+    .describe("Lista concisa das mudanças aplicadas durante a migração"),
+  notas: z
+    .string()
+    .optional()
+    .default("")
+    .describe("Avisos importantes, dependências necessárias ou observações"),
+});
+
+const AnalysisSchema = z.object({
+  complexidade: z
+    .enum(["baixa", "média", "alta"])
+    .describe("Complexidade estimada de migração"),
+  padroes: z
+    .array(z.string())
+    .describe("Padrões AngularJS encontrados no arquivo"),
+  dependencias: z
+    .array(z.string())
+    .describe("Dependências e bibliotecas que precisam ser substituídas"),
+  ordemSugerida: z
+    .array(z.string())
+    .describe("Passos numerados sugeridos para a migração"),
+  problemas: z
+    .array(z.string())
+    .describe("Possíveis problemas ou pontos de atenção na migração"),
+  resumo: z.string().describe("Parágrafo curto com resumo geral da análise"),
+});
+
+// ── Migration ─────────────────────────────────────────────────────────────────
+
+export async function migrateWithAI(code, tipo = "auto", contexto = "") {
+  const model = await buildModel(TASK_TYPES.MIGRATION, { maxTokens: 4096 });
+  const structured = model.withStructuredOutput(MigrationSchema);
+
+  const prompt = ChatPromptTemplate.fromMessages([
+    ["system", SYSTEM_PROMPT],
+    [
+      "human",
+      "Tipo solicitado: {tipo}\n{contextoLine}\n\nMigre o seguinte código AngularJS para Angular 21:\n```\n{code}\n```",
+    ],
+  ]);
+
+  dbgAI("enviando", "migration", `tipo=${tipo} | código=${code.length} chars`);
+  const result = await prompt.pipe(structured).invoke({
+    tipo,
+    contextoLine: contexto ? `Contexto adicional: ${contexto}` : "",
+    code,
+  });
+  dbgAI(
+    "resposta",
+    "migration",
+    `tipo=${result.tipo} | mudanças=${result.mudancas?.length ?? 0} | notas=${result.notas ? "sim" : "não"}`,
+  );
+  return result;
 }
 
-export async function analyzeWithAI(code, filename = "") {
-  const userMsg = `Analise este código AngularJS do arquivo "${filename}" e:
-1. Liste todos os padrões AngularJS usados
-2. Estime a complexidade de migração (baixa/média/alta)
-3. Liste dependências que precisam ser substituídas
-4. Sugira ordem de migração
-5. Identifique possíveis problemas
+// ── Analysis ──────────────────────────────────────────────────────────────────
 
-Formato de resposta:
-COMPLEXIDADE: [baixa|média|alta]
-PADRÕES: [lista separada por vírgulas]
-DEPENDÊNCIAS: [lista]
-ORDEM_SUGERIDA: [passos numerados]
-PROBLEMAS: [lista de possíveis problemas]
-RESUMO: [parágrafo curto]
+export async function analyzeWithAI(code, filename = "") {
+  const model = await buildModel(TASK_TYPES.ANALYSIS, { maxTokens: 2048 });
+  const structured = model.withStructuredOutput(AnalysisSchema);
+
+  const prompt = ChatPromptTemplate.fromMessages([
+    ["system", SYSTEM_PROMPT],
+    [
+      "human",
+      `Analise este código AngularJS do arquivo "{filename}" e retorne:
+1. Todos os padrões AngularJS usados
+2. Complexidade de migração (baixa/média/alta)
+3. Dependências que precisam ser substituídas
+4. Ordem de migração sugerida
+5. Possíveis problemas
 
 Código:
 \`\`\`
-${code}
-\`\`\``;
+{code}
+\`\`\``,
+    ],
+  ]);
 
-  return sendToProvider(SYSTEM_PROMPT, userMsg, { maxTokens: 2048 });
+  dbgAI(
+    "enviando",
+    "analysis",
+    `arquivo=${filename} | código=${code.length} chars`,
+  );
+  const result = await prompt.pipe(structured).invoke({ filename, code });
+  dbgAI(
+    "resposta",
+    "analysis",
+    `complexidade=${result.complexidade} | padrões=${result.padroes?.length ?? 0} | problemas=${result.problemas?.length ?? 0}`,
+  );
+  return result;
 }
 
+// ── Chat (REPL) ───────────────────────────────────────────────────────────────
+
 export async function chatWithAI(messages) {
-  return sendChatToProvider(messages, SYSTEM_PROMPT, { maxTokens: 4096 });
+  const model = await buildModel(TASK_TYPES.CHAT, { maxTokens: 4096 });
+
+  const langchainMessages = [
+    ["system", SYSTEM_PROMPT],
+    ...messages.map((m) => [
+      m.role === "assistant" ? "ai" : "human",
+      m.content,
+    ]),
+  ];
+
+  const result = await model.invoke(langchainMessages);
+
+  // Content can be a string (OpenAI/Gemini) or array of blocks (Anthropic)
+  if (typeof result.content === "string") return result.content;
+  if (Array.isArray(result.content))
+    return result.content.map((b) => b.text ?? b).join("");
+  return String(result.content);
 }

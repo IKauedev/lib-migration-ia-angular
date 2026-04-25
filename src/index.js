@@ -7,11 +7,13 @@ import { replCommand } from "./commands/repl.js";
 import { checklistCommand } from "./commands/checklist.js";
 import { migrateRepoCommand } from "./commands/migrate-repo.js";
 import { migrateProjectCommand } from "./commands/migrate-project.js";
+import { startCommand } from "./commands/start.js";
 import { scanCommand } from "./commands/scan.js";
 import { configCommand } from "./commands/config.js";
 import { envCommand } from "./commands/env.js";
 import { loadEnvFile } from "./utils/env-loader.js";
 import { printBanner } from "./utils/ui.js";
+import { activateDebug } from "./utils/debug.js";
 
 // Load ~/.ng-migrate/.env before anything else
 loadEnvFile();
@@ -21,7 +23,15 @@ printBanner();
 program
   .name("ng-migrate")
   .description("CLI de migração AngularJS → Angular 21 com IA (multi-provider)")
-  .version("2.0.0");
+  .version("2.0.0")
+  .option(
+    "--debug",
+    "Modo debug: exibe detalhes de cada operação (arquivos lidos/criados, chamadas IA, etc.)",
+  );
+
+program.hook("preAction", () => {
+  if (program.opts().debug) activateDebug();
+});
 
 // ── AI provider configuration ────────────────────────────────────────────────
 program
@@ -31,6 +41,10 @@ program
   )
   .option("--show", "Exibe a configuração atual")
   .option("--reset", "Redefine todas as configurações")
+  .option(
+    "--task-model",
+    "Configura modelos específicos por tarefa (migrate, analyze, scan, repl)",
+  )
   .action(configCommand);
 
 // ── Project analysis ──────────────────────────────────────────────────────────
@@ -82,6 +96,32 @@ program
   .option("--dry-run", "Apenas mostra o resultado, não salva")
   .option("--show-diff", "Mostra diff lado a lado")
   .action(migrateCommand);
+
+// ── Full pipeline (scan → plan → scaffold → migrate) ──────────────────────────
+program
+  .command("start [pasta]")
+  .alias("iniciar")
+  .description(
+    "Pipeline completo: escaneia o projeto, planeja e converte AngularJS → Angular 21 automaticamente",
+  )
+  .option(
+    "--only <glob>",
+    'Migrar apenas arquivos que casem com o padrão (ex: "src/app/**")',
+  )
+  .option(
+    "--phase <n>",
+    "Migrar apenas a fase N (1=services, 2=filters, 3=directives, 4=controllers, 5=templates, 6=routing)",
+  )
+  .addHelpText(
+    "after",
+    `
+  Exemplos:
+    ng-migrate start              Inicia o pipeline na pasta atual
+    ng-migrate start src/app      Inicia o pipeline em uma subpasta
+    ng-migrate start --only "src/services/**"   Migra apenas services
+    ng-migrate start --phase 1    Executa apenas a fase 1 (services)`,
+  )
+  .action(startCommand);
 
 // ── Local project migration ───────────────────────────────────────────────────
 program

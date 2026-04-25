@@ -1,9 +1,9 @@
 import chalk from "chalk";
-import ora from "ora";
 import {
   loadConfig,
   saveConfig,
   PROVIDERS,
+  TASK_LABELS,
   CONFIG_FILE_PATH,
 } from "../utils/config-manager.js";
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
@@ -27,18 +27,26 @@ export async function configCommand(opts) {
       },
     ]);
     if (confirm) {
-      saveConfig({ activeProvider: "anthropic", providers: {} });
+      saveConfig({
+        activeProvider: "anthropic",
+        providers: {},
+        taskModels: {},
+      });
       ui.success("Configuração redefinida.");
     }
     return;
   }
 
-  // ── Interactive setup ───────────────────────────────────────────────────────
-  const { default: inquirer } = await import("inquirer");
+  // ── Per-task model configuration ───────────────────────────────────────────────
+  if (opts.taskModel) {
+    await configureTaskModels();
+    return;
+  }
 
   ui.section("Configuração de Provedores de IA");
   console.log(chalk.dim(`  Configurações salvas em: ${CONFIG_FILE_PATH}\n`));
 
+  const { default: inquirer } = await import("inquirer");
   const config = loadConfig();
 
   // Step 1 — Choose provider
@@ -195,5 +203,134 @@ function showCurrentConfig() {
   console.log(
     chalk.dim("  Execute ng-migrate config para adicionar/alterar provedores."),
   );
+
+  // Per-task model overrides
+  const taskModels = config.taskModels || {};
+  if (Object.keys(taskModels).length > 0) {
+    ui.blank();
+    console.log(chalk.bold("  Modelos por tarefa:"));
+    for (const [task, cfg] of Object.entries(taskModels)) {
+      const label = TASK_LABELS[task] || task;
+      console.log(
+        chalk.cyan(`    ${task}`) +
+          chalk.dim(` (${label}): `) +
+          chalk.white(`${cfg.provider} / ${cfg.model || "modelo padrão"}`),
+      );
+    }
+    ui.blank();
+    console.log(
+      chalk.dim("  Execute ng-migrate config --task-model para configurar."),
+    );
+  } else {
+    ui.blank();
+    console.log(
+      chalk.dim(
+        "  Todas as tarefas usam o provedor ativo. Execute ng-migrate config --task-model para configurar modelos por tarefa.",
+      ),
+    );
+  }
+
+  printSeparator();
+}
+
+// ── Per-task model wizard ─────────────────────────────────────────────────────
+
+async function configureTaskModels() {
+  const { default: inquirer } = await import("inquirer");
+  const config = loadConfig();
+  const taskModels = config.taskModels || {};
+
+  ui.section("Configuração de Modelos por Tarefa");
+  console.log(
+    chalk.dim(
+      "  Configure provedores e modelos diferentes para cada operação de IA.\n" +
+        "  Deixe em branco para usar o provedor ativo como padrão.\n",
+    ),
+  );
+
+  const providerChoices = [
+    { name: chalk.dim("(usar provedor ativo)"), value: "" },
+    ...Object.entries(PROVIDERS).map(([key, val]) => ({
+      name: val.name,
+      value: key,
+    })),
+  ];
+
+  for (const [taskKey, taskLabel] of Object.entries(TASK_LABELS)) {
+    const current = taskModels[taskKey] || {};
+    console.log(chalk.bold(`\n  ${taskLabel}`));
+
+    const { provider } = await inquirer.prompt([
+      {
+        type: "list",
+        name: "provider",
+        message: "  Provedor:",
+        choices: providerChoices,
+        default: current.provider || "",
+      },
+    ]);
+
+    if (!provider) {
+      // Clear override — use active provider
+      delete taskModels[taskKey];
+      console.log(chalk.dim("    → usando provedor ativo\n"));
+      continue;
+    }
+
+    const providerCfg = config.providers[provider] || {};
+    const knownModels = PROVIDERS[provider]?.models || [];
+
+    let model = current.model || providerCfg.model || "";
+
+    if (knownModels.length > 0) {
+      const modelChoices = [
+        ...knownModels,
+        { name: chalk.dim("Digitar outro..."), value: "__custom__" },
+      ];
+      const { chosenModel } = await inquirer.prompt([
+        {
+          type: "list",
+          name: "chosenModel",
+          message: "  Modelo:",
+          choices: modelChoices,
+          default: model || knownModels[0],
+        },
+      ]);
+      if (chosenModel === "__custom__") {
+        const { customModel } = await inquirer.prompt([
+          {
+            type: "input",
+            name: "customModel",
+            message: "  Nome do modelo:",
+            default: model,
+          },
+        ]);
+        model = customModel;
+      } else {
+        model = chosenModel;
+      }
+    } else {
+      const { typedModel } = await inquirer.prompt([
+        {
+          type: "input",
+          name: "typedModel",
+          message: "  Nome do modelo:",
+          default: model,
+        },
+      ]);
+      model = typedModel;
+    }
+
+    taskModels[taskKey] = { provider, model };
+    console.log(
+      chalk.green("    ✔ ") + chalk.dim(`${provider} / ${model || "padrão"}\n`),
+    );
+  }
+
+  config.taskModels = taskModels;
+  saveConfig(config);
+
+  ui.blank();
+  ui.success("Configuração de modelos por tarefa salva!");
   printSeparator();
 }

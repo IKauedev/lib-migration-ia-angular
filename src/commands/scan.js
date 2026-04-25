@@ -12,6 +12,7 @@ import {
   ANALYSIS_FILE_NAME,
 } from "../utils/project-scanner.js";
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
+import { isDebug, dbgFile, dbgAI, dbgScan, dbgStep } from "../utils/debug.js";
 
 const COMPLEXITY_COLOR = {
   baixa: chalk.green,
@@ -71,6 +72,11 @@ export async function scanCommand(projectPath, opts) {
         `Escaneamento concluído — ${analysis.summary.angularJsFiles} arquivo(s) AngularJS em ${analysis.summary.totalFiles} arquivos totais`,
       ),
     );
+    if (analysis.files?.length) {
+      for (const f of analysis.files) {
+        dbgScan(f.path, f.patterns, f.complexity);
+      }
+    }
   } catch (err) {
     scanSpinner.fail(chalk.red("Erro no escaneamento: " + err.message));
     process.exit(1);
@@ -85,18 +91,24 @@ export async function scanCommand(projectPath, opts) {
   if (opts.ai && analysis.files.length > 0) {
     ui.blank();
     ui.info(`Iniciando análise AI para ${analysis.files.length} arquivo(s)...`);
-
-    const bar = new cliProgress.SingleBar(
-      {
-        format: chalk.dim(
-          "  {bar} {percentage}% | {value}/{total} | {filename}",
-        ),
-        barCompleteChar: "█",
-        barIncompleteChar: "░",
-        hideCursor: true,
-      },
-      cliProgress.Presets.shades_classic,
+    dbgStep(
+      `análise IA: ${analysis.files.length} arquivo(s) | provedor configurado`,
     );
+
+    const useBar = !isDebug();
+    const bar = useBar
+      ? new cliProgress.SingleBar(
+          {
+            format: chalk.dim(
+              "  {bar} {percentage}% | {value}/{total} | {filename}",
+            ),
+            barCompleteChar: "█",
+            barIncompleteChar: "░",
+            hideCursor: true,
+          },
+          cliProgress.Presets.shades_classic,
+        )
+      : { start: () => {}, update: () => {}, stop: () => {} };
 
     bar.start(analysis.files.length, 0, { filename: "" });
     let done = 0;
@@ -105,9 +117,24 @@ export async function scanCommand(projectPath, opts) {
       bar.update(done, { filename: fileInfo.path });
       try {
         const absFilePath = path.join(absPath, fileInfo.path);
+        dbgFile(
+          "lendo",
+          fileInfo.path,
+          `${fs.statSync(absFilePath).size} bytes`,
+        );
         const code = fs.readFileSync(absFilePath, "utf-8");
+        dbgAI(
+          "enviando",
+          "analysis",
+          `arquivo=${fileInfo.path} | ${code.length} chars`,
+        );
         const raw = await analyzeWithAI(code, fileInfo.path);
         const ai = parseAnalyzeResponse(raw);
+        dbgAI(
+          "resposta",
+          "analysis",
+          `arquivo=${fileInfo.path} | complexidade=${ai.complexidade || "?"} | padrões=${ai.padroes?.length || 0}`,
+        );
 
         fileInfo.aiAnalysis = {
           complexity: ai.complexidade || fileInfo.complexity,

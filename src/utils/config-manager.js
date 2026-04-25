@@ -42,11 +42,19 @@ export const PROVIDERS = {
   },
 };
 
+export const TASK_LABELS = {
+  migration: "Migração de arquivo (migrate)",
+  analysis: "Análise de arquivo/projeto (analyze)",
+  scan: "Varredura com IA (scan --ai)",
+  chat: "REPL interativo (repl)",
+};
+
 const DEFAULT_CONFIG = {
   activeProvider: "anthropic",
   providers: {
     anthropic: { model: "claude-opus-4-5" },
   },
+  taskModels: {}, // empty = use activeProvider for all tasks
 };
 
 export function loadConfig() {
@@ -61,6 +69,7 @@ export function loadConfig() {
       const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
       config.activeProvider = saved.activeProvider || config.activeProvider;
       config.providers = { ...config.providers, ...saved.providers };
+      config.taskModels = saved.taskModels ? { ...saved.taskModels } : {};
     }
   } catch {
     /* use defaults */

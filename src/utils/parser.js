@@ -1,41 +1,63 @@
-export function parseMigrateResponse(text) {
+export function parseMigrateResponse(input) {
+  // LangChain structured output already returns a typed object — pass through
+  if (typeof input === "object" && input !== null) {
+    return {
+      tipo: input.tipo || "",
+      padroes: input.padroes || [],
+      codigoOriginal: input.codigoOriginal || "",
+      codigoMigrado: input.codigoMigrado || "",
+      mudancas: input.mudancas || [],
+      notas: input.notas || "",
+      raw: input,
+    };
+  }
+
+  // Legacy fallback: parse raw text response (regex-based)
   const result = {
-    tipo: '',
+    tipo: "",
     padroes: [],
-    codigoOriginal: '',
-    codigoMigrado: '',
+    codigoOriginal: "",
+    codigoMigrado: "",
     mudancas: [],
-    notas: '',
-    raw: text,
+    notas: "",
+    raw: input,
   };
+
+  const text = input;
 
   // Tipo
   const tipoMatch = text.match(/TIPO:\s*(.+)/i);
   if (tipoMatch) result.tipo = tipoMatch[1].trim();
 
   // Padrões detectados
-  const padroesMatch = text.match(/PADRÕES_DETECTADOS:\n([\s\S]*?)(?=\nCÓDIGO_ORIGINAL:|$)/i);
+  const padroesMatch = text.match(
+    /PADRÕES_DETECTADOS:\n([\s\S]*?)(?=\nCÓDIGO_ORIGINAL:|$)/i,
+  );
   if (padroesMatch) {
     result.padroes = padroesMatch[1]
-      .split('\n')
-      .map(l => l.replace(/^[-*]\s*/, '').trim())
+      .split("\n")
+      .map((l) => l.replace(/^[-*]\s*/, "").trim())
       .filter(Boolean);
   }
 
   // Código original
-  const origMatch = text.match(/CÓDIGO_ORIGINAL:\n```(?:javascript|js|typescript|ts)?\n([\s\S]*?)```/i);
+  const origMatch = text.match(
+    /CÓDIGO_ORIGINAL:\n```(?:javascript|js|typescript|ts)?\n([\s\S]*?)```/i,
+  );
   if (origMatch) result.codigoOriginal = origMatch[1].trim();
 
   // Código migrado
-  const migMatch = text.match(/CÓDIGO_MIGRADO:\n```(?:javascript|js|typescript|ts)?\n([\s\S]*?)```/i);
+  const migMatch = text.match(
+    /CÓDIGO_MIGRADO:\n```(?:javascript|js|typescript|ts)?\n([\s\S]*?)```/i,
+  );
   if (migMatch) result.codigoMigrado = migMatch[1].trim();
 
   // Mudanças
   const mudancasMatch = text.match(/MUDANÇAS:\n([\s\S]*?)(?=\nNOTAS:|$)/i);
   if (mudancasMatch) {
     result.mudancas = mudancasMatch[1]
-      .split('\n')
-      .map(l => l.replace(/^[-*]\s*/, '').trim())
+      .split("\n")
+      .map((l) => l.replace(/^[-*]\s*/, "").trim())
       .filter(Boolean);
   }
 
@@ -46,14 +68,29 @@ export function parseMigrateResponse(text) {
   return result;
 }
 
-export function parseAnalyzeResponse(text) {
+export function parseAnalyzeResponse(input) {
+  // LangChain structured output already returns a typed object — pass through
+  if (typeof input === "object" && input !== null) {
+    return {
+      complexidade: input.complexidade || "",
+      padroes: input.padroes || [],
+      dependencias: input.dependencias || [],
+      ordemSugerida: input.ordemSugerida || [],
+      problemas: input.problemas || [],
+      resumo: input.resumo || "",
+      raw: input,
+    };
+  }
+
+  // Legacy fallback: parse raw text response (regex-based)
+  const text = input;
   const result = {
-    complexidade: '',
+    complexidade: "",
     padroes: [],
     dependencias: [],
     ordemSugerida: [],
     problemas: [],
-    resumo: '',
+    resumo: "",
     raw: text,
   };
 
@@ -62,22 +99,38 @@ export function parseAnalyzeResponse(text) {
 
   const padroesMatch = text.match(/PADRÕES:\s*(.+)/i);
   if (padroesMatch) {
-    result.padroes = padroesMatch[1].split(',').map(p => p.trim()).filter(Boolean);
+    result.padroes = padroesMatch[1]
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
   }
 
-  const depsMatch = text.match(/DEPENDÊNCIAS:\n?([\s\S]*?)(?=\nORDEM_SUGERIDA:|$)/i);
+  const depsMatch = text.match(
+    /DEPENDÊNCIAS:\n?([\s\S]*?)(?=\nORDEM_SUGERIDA:|$)/i,
+  );
   if (depsMatch) {
-    result.dependencias = depsMatch[1].split('\n').map(l => l.replace(/^[-*\d.]\s*/, '').trim()).filter(Boolean);
+    result.dependencias = depsMatch[1]
+      .split("\n")
+      .map((l) => l.replace(/^[-*\d.]\s*/, "").trim())
+      .filter(Boolean);
   }
 
-  const ordemMatch = text.match(/ORDEM_SUGERIDA:\n?([\s\S]*?)(?=\nPROBLEMAS:|$)/i);
+  const ordemMatch = text.match(
+    /ORDEM_SUGERIDA:\n?([\s\S]*?)(?=\nPROBLEMAS:|$)/i,
+  );
   if (ordemMatch) {
-    result.ordemSugerida = ordemMatch[1].split('\n').map(l => l.replace(/^[-*\d.]\s*/, '').trim()).filter(Boolean);
+    result.ordemSugerida = ordemMatch[1]
+      .split("\n")
+      .map((l) => l.replace(/^[-*\d.]\s*/, "").trim())
+      .filter(Boolean);
   }
 
   const problemasMatch = text.match(/PROBLEMAS:\n?([\s\S]*?)(?=\nRESUMO:|$)/i);
   if (problemasMatch) {
-    result.problemas = problemasMatch[1].split('\n').map(l => l.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
+    result.problemas = problemasMatch[1]
+      .split("\n")
+      .map((l) => l.replace(/^[-*]\s*/, "").trim())
+      .filter(Boolean);
   }
 
   const resumoMatch = text.match(/RESUMO:\n?([\s\S]*?)$/i);

@@ -11,6 +11,14 @@ import { parseMigrateResponse } from "../utils/parser.js";
 import { migrateDependencies } from "../utils/deps-migrator.js";
 import { buildReport, saveReport } from "../utils/report.js";
 import {
+  isDebug,
+  dbg,
+  dbgFile,
+  dbgDir,
+  dbgPhase,
+  dbgStep,
+} from "../utils/debug.js";
+import {
   loadAnalysis,
   loadRegistry,
   loadDepsGraph,
@@ -311,6 +319,7 @@ export async function migrateProjectCommand(projectPath, opts) {
   // ── Scaffold base Angular 21 project via `ng new` (non-inPlace only) ────────
   if (!inPlace) {
     const slug = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    dbgDir("scaffolding", outputDir, `ng new "${slug}"`);
     const scaffoldSpinner = ora(
       chalk.dim(
         `Criando projeto base com ng new "${slug}"... (pode levar alguns minutos)`,
@@ -332,6 +341,7 @@ export async function migrateProjectCommand(projectPath, opts) {
     }
   } else {
     // in-place: apenas cria o diretório de saída dos arquivos migrados
+    dbgDir("criando", outputDir, "diretório de saída (in-place)");
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
@@ -344,6 +354,11 @@ export async function migrateProjectCommand(projectPath, opts) {
       for (const fileInfo of filesToMigrate) {
         const srcAbs = path.join(absPath, fileInfo.path);
         const destAbs = path.join(backupDir, fileInfo.path);
+        dbgFile(
+          "backup",
+          fileInfo.path,
+          `→ ${path.relative(absPath, destAbs)}`,
+        );
         fs.mkdirSync(path.dirname(destAbs), { recursive: true });
         fs.copyFileSync(srcAbs, destAbs);
       }
@@ -358,17 +373,31 @@ export async function migrateProjectCommand(projectPath, opts) {
   }
 
   // ── Progress bar ───────────────────────────────────────────────────────────
-  const bar = new cliProgress.SingleBar(
-    {
-      format: chalk.dim("  {bar} {percentage}% | {value}/{total} | {filename}"),
-      barCompleteChar: "█",
-      barIncompleteChar: "░",
-      hideCursor: true,
-    },
-    cliProgress.Presets.shades_classic,
-  );
+  // In debug mode the bar is replaced by per-file log lines
+  const useBar = !isDebug();
+  const bar = useBar
+    ? new cliProgress.SingleBar(
+        {
+          format: chalk.dim(
+            "  {bar} {percentage}% | {value}/{total} | {filename}",
+          ),
+          barCompleteChar: "█",
+          barIncompleteChar: "░",
+          hideCursor: true,
+        },
+        cliProgress.Presets.shades_classic,
+      )
+    : {
+        start: () => {},
+        update: () => {},
+        stop: () => {},
+        increment: () => {},
+      };
 
   bar.start(filesToMigrate.length, 0, { filename: "" });
+  dbgStep(
+    `iniciando migração: ${filesToMigrate.length} arquivo(s) | concorrência=${concurrency}`,
+  );
 
   const stats = {
     total: filesToMigrate.length,
@@ -383,9 +412,19 @@ export async function migrateProjectCommand(projectPath, opts) {
 
   // ── Process phase by phase (parallel within same phase) ───────────────────
   const phases = [...new Set(filesToMigrate.map((f) => f.phase))].sort();
+  const phaseNames = [
+    "",
+    "Services & Factories",
+    "Filters → Pipes",
+    "Directives & Components",
+    "Controllers",
+    "Templates",
+    "Roteamento",
+  ];
 
   for (const phase of phases) {
     const phaseFiles = filesToMigrate.filter((f) => f.phase === phase);
+    dbgPhase(phase, phaseNames[phase] || `Fase ${phase}`, phaseFiles.length);
 
     await Promise.all(
       phaseFiles.map((fileInfo) =>
@@ -393,11 +432,15 @@ export async function migrateProjectCommand(projectPath, opts) {
           bar.update(completed, {
             filename: chalk.dim(fileInfo.path.slice(-45)),
           });
-
-          let code;
+          dbgFile(
+            "lendo",
+            fileInfo.path,
+            `fase=${phase} | complexidade=${fileInfo.complexity}`,
+          );
           try {
             code = fs.readFileSync(fileInfo.absPath, "utf-8");
           } catch {
+            dbgFile("skip", fileInfo.path, "não foi possível ler o arquivo");
             stats.skipped++;
             completed++;
             bar.increment();
@@ -426,6 +469,7 @@ export async function migrateProjectCommand(projectPath, opts) {
             }
             raw = await migrateWithAI(code, fileInfo.type || "auto", contexto);
           } catch (err) {
+            dbg(chalk.red(`  erro em ${fileInfo.path}: ${err.message}`));
             stats.errors++;
             errors.push({ file: fileInfo.path, message: err.message });
             stats.files.push({
@@ -446,6 +490,11 @@ export async function migrateProjectCommand(projectPath, opts) {
           const outPath = path.join(outputDir, outRelPath);
           fs.mkdirSync(path.dirname(outPath), { recursive: true });
           fs.writeFileSync(outPath, migratedCode, "utf-8");
+          dbgFile(
+            "escrevendo",
+            outPath,
+            `tipo=${result.tipo || "auto"} | ${migratedCode.length} chars`,
+          );
 
           stats.success++;
           stats.files.push({
@@ -468,6 +517,11 @@ export async function migrateProjectCommand(projectPath, opts) {
   if (!opts.skipDeps) {
     const srcPkg = path.join(absPath, "package.json");
     if (fs.existsSync(srcPkg)) {
+      dbgFile(
+        "lendo",
+        srcPkg,
+        "atualizando dependências AngularJS → Angular 21",
+      );
       const pkgSpinner = ora(chalk.dim("Atualizando package.json...")).start();
       try {
         const original = fs.readFileSync(srcPkg, "utf-8");
