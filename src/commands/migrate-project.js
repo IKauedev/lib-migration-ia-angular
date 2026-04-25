@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import ora from "ora";
 import chalk from "chalk";
 import pLimit from "p-limit";
@@ -18,6 +19,12 @@ import {
   ANALYSIS_FILE_NAME,
 } from "../utils/project-scanner.js";
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
+import {
+  ensureAngularCLI,
+  cloneRepo,
+  runNpmInstall,
+  scaffoldAngularProject,
+} from "../utils/ng-checker.js";
 
 const SKIP_PATTERNS = [
   /node_modules/,
@@ -39,6 +46,40 @@ function shouldSkip(p) {
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function migrateProjectCommand(projectPath, opts) {
+  // ── Check / install Angular CLI ────────────────────────────────────────────
+  await ensureAngularCLI();
+
+  // ── Optional: clone repo before migrating ─────────────────────────────────
+  let clonedTmpDir = null;
+  if (opts.clone) {
+    const repoUrl = opts.clone;
+    const repoName =
+      repoUrl
+        .split("/")
+        .pop()
+        .replace(/\.git$/, "") || "cloned-project";
+    clonedTmpDir = path.join(
+      os.tmpdir(),
+      `ng-migrate-${repoName}-${Date.now()}`,
+    );
+    const cloneSpinner = ora(
+      chalk.dim(`Clonando repositório: ${repoUrl}`),
+    ).start();
+    try {
+      cloneRepo(repoUrl, clonedTmpDir);
+      cloneSpinner.succeed(
+        chalk.green(`Repositório clonado em: ${chalk.cyan(clonedTmpDir)}`),
+      );
+    } catch (err) {
+      cloneSpinner.fail(
+        chalk.red("Falha ao clonar repositório: " + err.message),
+      );
+      process.exit(1);
+    }
+    // Override projectPath to the cloned directory
+    projectPath = clonedTmpDir;
+  }
+
   const absPath = path.resolve(projectPath || ".");
 
   if (!fs.existsSync(absPath)) {
@@ -89,38 +130,78 @@ export async function migrateProjectCommand(projectPath, opts) {
   printKeyValue("Concorrência:", String(concurrency));
   ui.blank();
 
-  // ── Load or generate analysis ──────────────────────────────────────────────
-  let analysis = !opts.rescan && loadAnalysis(absPath);
+  // ── Always scan before migrating ──────────────────────────────────────────
+  ui.section("Fase 1/2 — Análise do Projeto");
+  let analysis = null;
+  const scanSpinner = ora(chalk.dim("Escaneando projeto AngularJS...")).start();
+  try {
+    analysis = await scanProject(absPath);
+    if (!opts.dryRun) saveAnalysis(absPath, analysis);
+    scanSpinner.succeed(
+      chalk.green(
+        `Projeto escaneado: ${analysis.summary.angularJsFiles} arquivos AngularJS encontrados`,
+      ),
+    );
+  } catch (err) {
+    scanSpinner.warn(
+      chalk.yellow("Escaneamento falhou, usando glob simples: " + err.message),
+    );
+    analysis = null;
+  }
+
+  // Print scan summary
+  if (analysis?.summary) {
+    const s = analysis.summary;
+    ui.blank();
+    printKeyValue("Total de arquivos:", String(s.totalFiles ?? "—"));
+    printKeyValue(
+      "Arquivos AngularJS:",
+      chalk.cyan(String(s.angularJsFiles ?? "—")),
+    );
+    printKeyValue("Complexidade geral:", s.overallComplexity ?? "—");
+    printKeyValue(
+      "Horas estimadas:",
+      s.estimatedHours != null ? `~${s.estimatedHours}h` : "—",
+    );
+    if (s.complexityDistribution) {
+      printKeyValue(
+        "Distribuição:",
+        chalk.red(`alta: ${s.complexityDistribution.alta ?? 0}`) +
+          chalk.dim(" | ") +
+          chalk.yellow(`média: ${s.complexityDistribution.média ?? 0}`) +
+          chalk.dim(" | ") +
+          chalk.green(`baixa: ${s.complexityDistribution.baixa ?? 0}`),
+      );
+    }
+    if (analysis.migrationPlan?.phases?.length) {
+      ui.blank();
+      ui.info("Plano de migração (fases detectadas):");
+      const phaseNames = [
+        "",
+        "Services & Factories",
+        "Filters → Pipes",
+        "Directives & Components",
+        "Controllers",
+        "Templates",
+        "Roteamento",
+      ];
+      for (const phase of analysis.migrationPlan.phases) {
+        const name = phaseNames[phase.phase] || `Fase ${phase.phase}`;
+        console.log(
+          chalk.dim(`  Fase ${phase.phase}: `) +
+            chalk.white(name) +
+            chalk.dim(` (${phase.files?.length ?? 0} arquivo(s))`),
+        );
+      }
+    }
+  }
+
+  ui.blank();
+  ui.section("Fase 2/2 — Migração");
+
   // Load registry and deps graph for AI context
   const registry = loadRegistry(absPath);
   const depsGraph = loadDepsGraph(absPath);
-
-  if (analysis) {
-    ui.info(
-      `Usando análise existente de ${chalk.cyan(new Date(analysis.scannedAt).toLocaleString())}`,
-    );
-    ui.info(
-      `  Execute com ${chalk.cyan("--rescan")} para re-escanear o projeto antes de migrar`,
-    );
-  } else {
-    const scanSpinner = ora(chalk.dim("Escaneando projeto...")).start();
-    try {
-      analysis = await scanProject(absPath);
-      if (!opts.dryRun) saveAnalysis(absPath, analysis);
-      scanSpinner.succeed(
-        chalk.green(
-          `Projeto escaneado: ${analysis.summary.angularJsFiles} arquivos AngularJS encontrados`,
-        ),
-      );
-    } catch (err) {
-      scanSpinner.warn(
-        chalk.yellow(
-          "Escaneamento falhou, usando glob simples: " + err.message,
-        ),
-      );
-      analysis = null;
-    }
-  }
 
   ui.blank();
 
@@ -227,8 +308,32 @@ export async function migrateProjectCommand(projectPath, opts) {
     return;
   }
 
-  // ── Create output dir ──────────────────────────────────────────────────────
-  fs.mkdirSync(outputDir, { recursive: true });
+  // ── Scaffold base Angular 21 project via `ng new` (non-inPlace only) ────────
+  if (!inPlace) {
+    const slug = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const scaffoldSpinner = ora(
+      chalk.dim(
+        `Criando projeto base com ng new "${slug}"... (pode levar alguns minutos)`,
+      ),
+    ).start();
+    try {
+      scaffoldAngularProject(slug, outputDir);
+      scaffoldSpinner.succeed(
+        chalk.green(`Projeto Angular 21 criado em: ${chalk.cyan(outputDir)}`),
+      );
+    } catch (err) {
+      scaffoldSpinner.fail(
+        chalk.red("Falha ao criar projeto Angular 21: " + err.message),
+      );
+      ui.error(
+        "Verifique se o Angular CLI está instalado corretamente e tente novamente.",
+      );
+      process.exit(1);
+    }
+  } else {
+    // in-place: apenas cria o diretório de saída dos arquivos migrados
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
 
   // ── In-place: backup original source files ────────────────────────────────
   if (inPlace && !opts.dryRun) {
@@ -445,19 +550,38 @@ export async function migrateProjectCommand(projectPath, opts) {
   }
   ui.info(`Relatório: ${chalk.cyan(reportPath)}`);
   ui.blank();
+
+  // ── Auto npm install ───────────────────────────────────────────────────────
+  const installDir = inPlace ? absPath : outputDir;
+  if (!opts.skipInstall && !opts.dryRun) {
+    const installSpinner = ora(
+      chalk.dim(`Executando npm install em ${chalk.cyan(installDir)}...`),
+    ).start();
+    try {
+      runNpmInstall(installDir);
+      installSpinner.succeed(
+        chalk.green("Dependências instaladas com sucesso!"),
+      );
+    } catch (err) {
+      installSpinner.warn(
+        chalk.yellow("npm install falhou — execute manualmente: ") +
+          chalk.dim(`cd ${installDir} && npm install`),
+      );
+    }
+  }
+
+  ui.blank();
   console.log(chalk.dim("  Próximos passos:"));
   if (inPlace) {
     console.log(chalk.dim(`  1. cd ${absPath}`));
-    console.log(chalk.dim(`  2. npm install`));
-    console.log(chalk.dim(`  3. Aponte o seu build para src-angular21/`));
-    console.log(chalk.dim(`  4. npx ng serve   (ou npm start)`));
-    console.log(chalk.dim(`  5. Revise arquivos com erros manualmente`));
-    console.log(chalk.dim(`  6. Quando estável, remova src-angularjs-backup/`));
+    console.log(chalk.dim(`  2. Aponte o seu build para src-angular21/`));
+    console.log(chalk.dim(`  3. ng serve   (ou npm start)`));
+    console.log(chalk.dim(`  4. Revise arquivos com erros manualmente`));
+    console.log(chalk.dim(`  5. Quando estável, remova src-angularjs-backup/`));
   } else {
     console.log(chalk.dim(`  1. cd ${outputDir}`));
-    console.log(chalk.dim("  2. npm install"));
-    console.log(chalk.dim("  3. npx ng serve   (ou npm start)"));
-    console.log(chalk.dim("  4. Revise arquivos com erros manualmente"));
+    console.log(chalk.dim("  2. ng serve   (ou npm start)"));
+    console.log(chalk.dim("  3. Revise arquivos com erros manualmente"));
   }
   printSeparator();
 }

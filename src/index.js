@@ -89,6 +89,10 @@ program
   .alias("migrar-projeto")
   .description("Migra projeto AngularJS local completo para Angular 21")
   .option(
+    "--clone <url>",
+    "Clona o repositório git antes de migrar (ex: https://github.com/user/repo)",
+  )
+  .option(
     "-o, --output <pasta>",
     "Pasta de saída (padrão: ./<projeto>-angular21)",
   )
@@ -98,7 +102,6 @@ program
   )
   .option("-c, --concurrency <n>", "Arquivos migrados em paralelo", "3")
   .option("--dry-run", "Lista arquivos que seriam migrados sem executar")
-  .option("--rescan", "Re-escaneia o projeto antes de migrar")
   .option(
     "--only <glob>",
     'Migrar apenas arquivos que casem com o padrão (ex: "src/app/**")',
@@ -108,6 +111,7 @@ program
     "Migrar apenas a fase N do plano (1=services, 2=filters, 3=directives, 4=controllers, 5=templates, 6=routing)",
   )
   .option("--skip-deps", "Não atualizar package.json")
+  .option("--skip-install", "Não executar npm install após a migração")
   .addHelpText(
     "after",
     `
@@ -115,6 +119,7 @@ program
     ng-migrate migrate-project              Migra pasta atual → pasta-angular21/
     ng-migrate migrate-project .            Idem
     ng-migrate migrate-project src/app      Migra subfolder específico
+    ng-migrate migrate-project --clone https://github.com/user/repo   Clona e migra
     ng-migrate migrate-project --in-place   Migra no mesmo projeto (cria src-angular21/)
     ng-migrate migrate-project --dry-run    Lista o que seria migrado sem executar`,
   )

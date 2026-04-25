@@ -201,28 +201,32 @@ ng-migrate migrate-project ./src/app          # Migra subfolder específico
 ng-migrate migrate-project --in-place         # Migra dentro do próprio projeto
 ng-migrate migrate-project -o ./saida         # Define pasta de saída
 ng-migrate migrate-project --dry-run          # Lista o que seria migrado sem executar
-ng-migrate migrate-project --rescan           # Re-escaneia antes de migrar
 ng-migrate migrate-project --concurrency 5   # 5 arquivos em paralelo
 ng-migrate migrate-project --phase 1         # Migra apenas serviços/factories
 ng-migrate migrate-project --only "src/**"   # Filtra por glob
 ng-migrate migrate-project --skip-deps       # Não atualiza package.json
+ng-migrate migrate-project --skip-install    # Não executa npm install ao final
+ng-migrate migrate-project --clone https://github.com/usuario/repo  # Clona e migra
 ```
 
 **Aliases em português:** `ng-migrate migrar-projeto`
+
+> O `migrate-project` **sempre escaneia o projeto antes de migrar**, exibindo um resumo completo (arquivos encontrados, complexidade, horas estimadas, plano de fases) antes de iniciar qualquer alteração.
 
 **Opções:**
 
 | Opção | Padrão | Descrição |
 |---|---|---|
 | `[pasta]` | `.` (atual) | Pasta raiz do projeto AngularJS |
+| `--clone <url>` | — | Clona o repositório git antes de migrar |
 | `-o, --output <pasta>` | `../<projeto>-angular21` | Pasta de saída |
 | `--in-place` | — | Migra dentro do próprio projeto (veja abaixo) |
 | `-c, --concurrency <n>` | `3` | Número de arquivos migrados em paralelo |
 | `--dry-run` | — | Mostra o plano sem executar |
-| `--rescan` | — | Força novo scan antes de migrar |
 | `--only <glob>` | — | Filtra arquivos por padrão glob |
 | `--phase <n>` | — | Migra apenas a fase N (1–6) |
 | `--skip-deps` | — | Não atualiza o `package.json` |
+| `--skip-install` | — | Não executa `npm install` ao final |
 
 **Modo `--in-place` — dentro do próprio projeto:**
 
@@ -241,17 +245,20 @@ meu-projeto/
 └── package.json            ← atualizado com dependências do Angular 21
 ```
 
-**Modo padrão — pasta separada:**
+**Modo padrão — pasta separada (com `ng new`):**
+
+Antes de migrar qualquer arquivo, a CLI executa automaticamente `ng new` para criar a estrutura oficial do Angular 21. Os arquivos do projeto AngularJS são então migrados para dentro desse scaffold.
+
 ```
-../meu-projeto-angular21/
+../meu-projeto-angular21/          ← criado via `ng new`
 ├── src/
 │   └── app/
-│       ├── user.component.ts
-│       ├── auth.service.ts
-│       └── currency.pipe.ts
-├── angular.json
-├── tsconfig.json
-├── package.json
+│       ├── user.component.ts      ← migrado do controller original
+│       ├── auth.service.ts        ← migrado do service/factory original
+│       └── currency.pipe.ts       ← migrado do filter original
+├── angular.json                   ← gerado pelo Angular CLI
+├── tsconfig.json                  ← gerado pelo Angular CLI
+├── package.json                   ← atualizado com deps do projeto
 └── MIGRATION_REPORT_<data>.md
 ```
 
@@ -416,12 +423,25 @@ ng-migrate scan --ai --force
 ng-migrate migrate-project --dry-run
 
 # Passo 6: Execute a migração
-ng-migrate migrate-project --in-place   # dentro do projeto
-# ou
-ng-migrate migrate-project              # em pasta separada
+ng-migrate migrate-project
+# O que acontece automaticamente:
+#   1. Verifica/instala o Angular CLI globalmente (se necessário)
+#   2. FASE 1 — Escaneia o projeto: exibe arquivos, complexidade, plano de fases
+#   3. FASE 2 — Executa `ng new` para criar o projeto Angular 21 base
+#   4. IA migra cada arquivo por fase (services → routing)
+#   5. package.json é atualizado com as deps corretas
+#   6. npm install é executado no projeto final
+
+# Modo in-place (dentro do próprio projeto, sem ng new)
+ng-migrate migrate-project --in-place
+
+# Migrando direto de um repositório remoto
+ng-migrate migrate-project --clone https://github.com/usuario/repo
 
 # Passo 7: Revise e corrija os erros
 # O relatório MIGRATION_REPORT_*.md lista os arquivos com problema
+cd ../meu-projeto-angular21
+ng serve
 ```
 
 ### Repositório remoto
