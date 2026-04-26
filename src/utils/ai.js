@@ -108,6 +108,38 @@ const AnalysisSchema = z.object({
   resumo: z.string().describe("Parágrafo curto com resumo geral da análise"),
 });
 
+// ── Retry with exponential backoff ───────────────────────────────────────────
+
+async function retryWithBackoff(fn, maxRetries = 3, baseDelayMs = 1000) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      // Don't retry on validation/schema errors — only network/rate-limit errors
+      const isRetryable =
+        err.status === 429 ||
+        err.status === 500 ||
+        err.status === 503 ||
+        err.code === "ECONNRESET" ||
+        err.code === "ETIMEDOUT" ||
+        err.message?.includes("rate limit") ||
+        err.message?.includes("overloaded") ||
+        err.message?.includes("timeout");
+      if (!isRetryable || attempt === maxRetries) break;
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      dbgAI(
+        "retry",
+        "backoff",
+        `tentativa ${attempt + 1}/${maxRetries} falhou: ${err.message} — aguardando ${delay}ms`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
 // ── Migration ─────────────────────────────────────────────────────────────────
 
 export async function migrateWithAI(code, tipo = "auto", contexto = "") {
@@ -123,11 +155,13 @@ export async function migrateWithAI(code, tipo = "auto", contexto = "") {
   ]);
 
   dbgAI("enviando", "migration", `tipo=${tipo} | código=${code.length} chars`);
-  const result = await prompt.pipe(structured).invoke({
-    tipo,
-    contextoLine: contexto ? `Contexto adicional: ${contexto}` : "",
-    code,
-  });
+  const result = await retryWithBackoff(async () =>
+    prompt.pipe(structured).invoke({
+      tipo,
+      contextoLine: contexto ? `Contexto adicional: ${contexto}` : "",
+      code,
+    }),
+  );
   dbgAI(
     "resposta",
     "migration",
@@ -165,7 +199,9 @@ Código:
     "analysis",
     `arquivo=${filename} | código=${code.length} chars`,
   );
-  const result = await prompt.pipe(structured).invoke({ filename, code });
+  const result = await retryWithBackoff(async () =>
+    prompt.pipe(structured).invoke({ filename, code }),
+  );
   dbgAI(
     "resposta",
     "analysis",
