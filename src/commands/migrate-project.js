@@ -11,302 +11,301 @@ import { parseMigrateResponse } from "../utils/parser.js";
 import { migrateDependencies } from "../utils/deps-migrator.js";
 import { buildReport, saveReport } from "../utils/report.js";
 import {
-  isDebug,
-  dbg,
-  dbgFile,
-  dbgDir,
-  dbgPhase,
-  dbgStep,
+    isDebug,
+    dbg,
+    dbgFile,
+    dbgDir,
+    dbgPhase,
+    dbgStep,
 } from "../utils/debug.js";
 import {
-  loadAnalysis,
-  loadRegistry,
-  loadDepsGraph,
-  scanProject,
-  saveAnalysis,
-  ANALYSIS_FILE_NAME,
+    loadAnalysis,
+    loadRegistry,
+    loadDepsGraph,
+    scanProject,
+    saveAnalysis,
+    ANALYSIS_FILE_NAME,
 } from "../utils/project-scanner.js";
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
 import {
-  ensureAngularCLI,
-  cloneRepo,
-  runNpmInstall,
-  scaffoldAngularProject,
+    ensureAngularCLI,
+    cloneRepo,
+    runNpmInstall,
+    scaffoldAngularProject,
 } from "../utils/ng-checker.js";
 
 const SKIP_PATTERNS = [
-  /node_modules/,
-  /\.min\.js$/,
-  /dist\//,
-  /coverage\//,
-  /\.git\//,
-  /\.angular\//,
-  /e2e\//,
-  /\.spec\.(js|ts)$/,
-  /karma\.conf/,
-  /protractor/,
+    /node_modules/,
+    /\.min\.js$/,
+    /dist\//,
+    /coverage\//,
+    /\.git\//,
+    /\.angular\//,
+    /e2e\//,
+    /\.spec\.(js|ts)$/,
+    /karma\.conf/,
+    /protractor/,
 ];
 
 function shouldSkip(p) {
-  return SKIP_PATTERNS.some((pat) => pat.test(p.replace(/\\/g, "/")));
+    return SKIP_PATTERNS.some((pat) => pat.test(p.replace(/\\/g, "/")));
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function migrateProjectCommand(projectPath, opts) {
-  // ── Check / install Angular CLI ────────────────────────────────────────────
-  await ensureAngularCLI();
+    // ── Check / install Angular CLI ────────────────────────────────────────────
+    await ensureAngularCLI();
 
-  // ── Optional: clone repo before migrating ─────────────────────────────────
-  let clonedTmpDir = null;
-  if (opts.clone) {
-    const repoUrl = opts.clone;
-    const repoName =
-      repoUrl
-        .split("/")
-        .pop()
-        .replace(/\.git$/, "") || "cloned-project";
-    clonedTmpDir = path.join(
-      os.tmpdir(),
-      `ng-migrate-${repoName}-${Date.now()}`,
-    );
-    const cloneSpinner = ora(
-      chalk.dim(`Clonando repositório: ${repoUrl}`),
-    ).start();
-    try {
-      cloneRepo(repoUrl, clonedTmpDir);
-      cloneSpinner.succeed(
-        chalk.green(`Repositório clonado em: ${chalk.cyan(clonedTmpDir)}`),
-      );
-    } catch (err) {
-      cloneSpinner.fail(
-        chalk.red("Falha ao clonar repositório: " + err.message),
-      );
-      process.exit(1);
-    }
-    // Override projectPath to the cloned directory
-    projectPath = clonedTmpDir;
-  }
-
-  const absPath = path.resolve(projectPath || ".");
-
-  if (!fs.existsSync(absPath)) {
-    ui.error(`Pasta não encontrada: ${absPath}`);
-    process.exit(1);
-  }
-  if (!fs.lstatSync(absPath).isDirectory()) {
-    ui.error("Use ng-migrate migrate <arquivo> para arquivos individuais.");
-    process.exit(1);
-  }
-
-  const projectName = path.basename(absPath);
-
-  // ── Resolve output strategy ────────────────────────────────────────────────
-  const inPlace = !!opts.inPlace;
-  let outputDir;
-  let backupDir = null;
-  let scaffoldRoot; // where angular.json / tsconfig / package.json go
-
-  if (inPlace) {
-    outputDir = path.join(absPath, "src-angular21");
-    backupDir = path.join(absPath, "src-angularjs-backup");
-    scaffoldRoot = absPath; // scaffold files go to the project root
-  } else {
-    outputDir = opts.output
-      ? path.resolve(opts.output)
-      : path.join(path.dirname(absPath), `${projectName}-angular21`);
-    scaffoldRoot = outputDir;
-  }
-
-  const concurrency = parseInt(opts.concurrency || "3", 10);
-
-  ui.section("Migração de Projeto Local → Angular 21");
-  printKeyValue("Projeto:", absPath);
-  if (inPlace) {
-    printKeyValue("Modo:", chalk.cyan("in-place (dentro do projeto)"));
-    printKeyValue("Saída migrada:", outputDir);
-    printKeyValue("Backup original:", chalk.dim(backupDir));
-  } else {
-    printKeyValue("Saída:", outputDir);
-  }
-  printKeyValue(
-    "Execução:",
-    opts.dryRun
-      ? chalk.yellow("dry-run (sem salvar)")
-      : chalk.green("migração completa"),
-  );
-  printKeyValue("Concorrência:", String(concurrency));
-  ui.blank();
-
-  // ── Always scan before migrating ──────────────────────────────────────────
-  ui.section("Fase 1/2 — Análise do Projeto");
-  let analysis = null;
-  const scanSpinner = ora(chalk.dim("Escaneando projeto AngularJS...")).start();
-  try {
-    analysis = await scanProject(absPath);
-    if (!opts.dryRun) saveAnalysis(absPath, analysis);
-    scanSpinner.succeed(
-      chalk.green(
-        `Projeto escaneado: ${analysis.summary.angularJsFiles} arquivos AngularJS encontrados`,
-      ),
-    );
-  } catch (err) {
-    scanSpinner.warn(
-      chalk.yellow("Escaneamento falhou, usando glob simples: " + err.message),
-    );
-    analysis = null;
-  }
-
-  // Print scan summary
-  if (analysis?.summary) {
-    const s = analysis.summary;
-    ui.blank();
-    printKeyValue("Total de arquivos:", String(s.totalFiles ?? "—"));
-    printKeyValue(
-      "Arquivos AngularJS:",
-      chalk.cyan(String(s.angularJsFiles ?? "—")),
-    );
-    printKeyValue("Complexidade geral:", s.overallComplexity ?? "—");
-    printKeyValue(
-      "Horas estimadas:",
-      s.estimatedHours != null ? `~${s.estimatedHours}h` : "—",
-    );
-    if (s.complexityDistribution) {
-      printKeyValue(
-        "Distribuição:",
-        chalk.red(`alta: ${s.complexityDistribution.alta ?? 0}`) +
-          chalk.dim(" | ") +
-          chalk.yellow(`média: ${s.complexityDistribution.média ?? 0}`) +
-          chalk.dim(" | ") +
-          chalk.green(`baixa: ${s.complexityDistribution.baixa ?? 0}`),
-      );
-    }
-    if (analysis.migrationPlan?.phases?.length) {
-      ui.blank();
-      ui.info("Plano de migração (fases detectadas):");
-      const phaseNames = [
-        "",
-        "Services & Factories",
-        "Filters → Pipes",
-        "Directives & Components",
-        "Controllers",
-        "Templates",
-        "Roteamento",
-      ];
-      for (const phase of analysis.migrationPlan.phases) {
-        const name = phaseNames[phase.phase] || `Fase ${phase.phase}`;
-        console.log(
-          chalk.dim(`  Fase ${phase.phase}: `) +
-            chalk.white(name) +
-            chalk.dim(` (${phase.files?.length ?? 0} arquivo(s))`),
+    // ── Optional: clone repo before migrating ─────────────────────────────────
+    let clonedTmpDir = null;
+    if (opts.clone) {
+        const repoUrl = opts.clone;
+        const repoName =
+            repoUrl
+            .split("/")
+            .pop()
+            .replace(/\.git$/, "") || "cloned-project";
+        clonedTmpDir = path.join(
+            os.tmpdir(),
+            `ng-migrate-${repoName}-${Date.now()}`,
         );
-      }
+        const cloneSpinner = ora(
+            chalk.dim(`Clonando repositório: ${repoUrl}`),
+        ).start();
+        try {
+            await cloneRepo(repoUrl, clonedTmpDir);
+            cloneSpinner.succeed(
+                chalk.green(`Repositório clonado em: ${chalk.cyan(clonedTmpDir)}`),
+            );
+        } catch (err) {
+            cloneSpinner.fail(
+                chalk.red("Falha ao clonar repositório: " + err.message),
+            );
+            process.exit(1);
+        }
+        // Override projectPath to the cloned directory
+        projectPath = clonedTmpDir;
     }
-  }
 
-  ui.blank();
-  ui.section("Fase 2/2 — Migração");
+    const absPath = path.resolve(projectPath || ".");
 
-  // Load registry and deps graph for AI context
-  const registry = loadRegistry(absPath);
-  const depsGraph = loadDepsGraph(absPath);
+    if (!fs.existsSync(absPath)) {
+        ui.error(`Pasta não encontrada: ${absPath}`);
+        process.exit(1);
+    }
+    if (!fs.lstatSync(absPath).isDirectory()) {
+        ui.error("Use ng-migrate migrate <arquivo> para arquivos individuais.");
+        process.exit(1);
+    }
 
-  ui.blank();
+    const projectName = path.basename(absPath);
 
-  // ── Build file list ────────────────────────────────────────────────────────
-  let filesToMigrate = [];
+    // ── Resolve output strategy ────────────────────────────────────────────────
+    const inPlace = !!opts.inPlace;
+    let outputDir;
+    let backupDir = null;
+    let scaffoldRoot; // where angular.json / tsconfig / package.json go
 
-  if (analysis?.files?.length) {
-    // Use phase-sorted order from analysis
-    filesToMigrate = analysis.files
-      .filter((f) => !shouldSkip(f.path))
-      .map((f) => ({
-        path: f.path,
-        absPath: path.join(absPath, f.path),
-        type: f.type || "auto",
-        complexity: f.complexity,
-        phase: f.phase || 4,
-        loc: f.loc || 0,
-      }));
-  } else {
-    const raw = await glob("**/*.{js,ts,html}", {
-      cwd: absPath,
-      ignore: ["node_modules/**", "dist/**", ".angular/**"],
-    });
-    filesToMigrate = raw
-      .filter((f) => !shouldSkip(f))
-      .map((f) => ({
-        path: f,
-        absPath: path.join(absPath, f),
-        type: "auto",
-        complexity: "média",
-        phase: 4,
-        loc: 0,
-      }));
-  }
+    if (inPlace) {
+        outputDir = path.join(absPath, "src-angular21");
+        backupDir = path.join(absPath, "src-angularjs-backup");
+        scaffoldRoot = absPath; // scaffold files go to the project root
+    } else {
+        outputDir = opts.output ?
+            path.resolve(opts.output) :
+            path.join(path.dirname(absPath), `${projectName}-angular21`);
+        scaffoldRoot = outputDir;
+    }
 
-  if (filesToMigrate.length === 0) {
-    ui.warn("Nenhum arquivo AngularJS encontrado para migrar.");
-    return;
-  }
+    const concurrency = parseInt(opts.concurrency || "3", 10);
 
-  // ── Apply glob filter ──────────────────────────────────────────────────────
-  if (opts.only) {
-    const regex = new RegExp(
-      "^" +
-        opts.only
-          .replace(/\*\*/g, "§")
-          .replace(/\*/g, "[^/]*")
-          .replace(/§/g, ".*") +
-        "$",
+    ui.section("Migração de Projeto Local → Angular 21");
+    printKeyValue("Projeto:", absPath);
+    if (inPlace) {
+        printKeyValue("Modo:", chalk.cyan("in-place (dentro do projeto)"));
+        printKeyValue("Saída migrada:", outputDir);
+        printKeyValue("Backup original:", chalk.dim(backupDir));
+    } else {
+        printKeyValue("Saída:", outputDir);
+    }
+    printKeyValue(
+        "Execução:",
+        opts.dryRun ?
+        chalk.yellow("dry-run (sem salvar)") :
+        chalk.green("migração completa"),
     );
-    filesToMigrate = filesToMigrate.filter((f) => regex.test(f.path));
+    printKeyValue("Concorrência:", String(concurrency));
+    ui.blank();
+
+    // ── Always scan before migrating ──────────────────────────────────────────
+    ui.section("Fase 1/2 — Análise do Projeto");
+    let analysis = null;
+    const scanSpinner = ora(chalk.dim("Escaneando projeto AngularJS...")).start();
+    try {
+        analysis = await scanProject(absPath);
+        if (!opts.dryRun) saveAnalysis(absPath, analysis);
+        scanSpinner.succeed(
+            chalk.green(
+                `Projeto escaneado: ${analysis.summary.angularJsFiles} arquivos AngularJS encontrados`,
+            ),
+        );
+    } catch (err) {
+        scanSpinner.warn(
+            chalk.yellow("Escaneamento falhou, usando glob simples: " + err.message),
+        );
+        analysis = null;
+    }
+
+    // Print scan summary
+    if (analysis && analysis.summary) {
+        const s = analysis.summary;
+        ui.blank();
+        printKeyValue("Total de arquivos:", String(s.totalFiles || "—"));
+        printKeyValue(
+            "Arquivos AngularJS:",
+            chalk.cyan(String(s.angularJsFiles || "—")),
+        );
+        printKeyValue("Complexidade geral:", s.overallComplexity || "—");
+        printKeyValue(
+            "Horas estimadas:",
+            s.estimatedHours != null ? `~${s.estimatedHours}h` : "—",
+        );
+        if (s.complexityDistribution) {
+            printKeyValue(
+                "Distribuição:",
+                chalk.red(`alta: ${s.complexityDistribution.alta ?? 0}`) +
+                chalk.dim(" | ") +
+                chalk.yellow(`média: ${s.complexityDistribution.média ?? 0}`) +
+                chalk.dim(" | ") +
+                chalk.green(`baixa: ${s.complexityDistribution.baixa ?? 0}`),
+            );
+        }
+        if (analysis && analysis.migrationPlan && analysis.migrationPlan.phases && analysis.migrationPlan.phases.length) {
+            ui.blank();
+            ui.info("Plano de migração (fases detectadas):");
+            const phaseNames = [
+                "",
+                "Services & Factories",
+                "Filters → Pipes",
+                "Directives & Components",
+                "Controllers",
+                "Templates",
+                "Roteamento",
+            ];
+            for (const phase of analysis.migrationPlan.phases) {
+                const name = phaseNames[phase.phase] || `Fase ${phase.phase}`;
+                console.log(
+                    chalk.dim(`  Fase ${phase.phase}: `) +
+                    chalk.white(name) +
+                    chalk.dim(` (${phase.files?.length ?? 0} arquivo(s))`),
+                );
+            }
+        }
+    }
+
+    ui.blank();
+    ui.section("Fase 2/2 — Migração");
+
+    // Load registry and deps graph for AI context
+    const registry = loadRegistry(absPath);
+    const depsGraph = loadDepsGraph(absPath);
+
+    ui.blank();
+
+    // ── Build file list ────────────────────────────────────────────────────────
+    let filesToMigrate = [];
+
+    if (analysis && analysis.files && analysis.files.length) {
+        // Use phase-sorted order from analysis
+        filesToMigrate = analysis.files
+            .filter((f) => !shouldSkip(f.path))
+            .map((f) => ({
+                path: f.path,
+                absPath: path.join(absPath, f.path),
+                type: f.type || "auto",
+                complexity: f.complexity,
+                phase: f.phase || 4,
+                loc: f.loc || 0,
+            }));
+    } else {
+        const raw = await glob("**/*.{js,ts,html}", {
+            cwd: absPath,
+            ignore: ["node_modules/**", "dist/**", ".angular/**"],
+        });
+        filesToMigrate = raw
+            .filter((f) => !shouldSkip(f))
+            .map((f) => ({
+                path: f,
+                absPath: path.join(absPath, f),
+                type: "auto",
+                complexity: "média",
+                phase: 4,
+                loc: 0,
+            }));
+    }
+
     if (filesToMigrate.length === 0) {
-      ui.warn(`Nenhum arquivo corresponde ao filtro: ${opts.only}`);
-      return;
+        ui.warn("Nenhum arquivo AngularJS encontrado para migrar.");
+        return;
     }
-  }
 
-  // ── Phase filter ───────────────────────────────────────────────────────────
-  if (opts.phase) {
-    const ph = parseInt(opts.phase, 10);
-    filesToMigrate = filesToMigrate.filter((f) => f.phase === ph);
-    ui.info(
-      `Filtrando apenas Fase ${ph} (${filesToMigrate.length} arquivo(s))`,
-    );
-  }
+    // ── Apply glob filter ──────────────────────────────────────────────────────
+    if (opts.only) {
+        const regex = new RegExp(
+            "^" +
+            opts.only
+            .replace(/\*\*/g, "§")
+            .replace(/\*/g, "[^/]*")
+            .replace(/§/g, ".*") +
+            "$",
+        );
+        filesToMigrate = filesToMigrate.filter((f) => regex.test(f.path));
+        if (filesToMigrate.length === 0) {
+            ui.warn(`Nenhum arquivo corresponde ao filtro: ${opts.only}`);
+            return;
+        }
+    }
 
-  printKeyValue("Arquivos para migrar:", String(filesToMigrate.length));
-  if (analysis) {
-    printKeyValue("Horas estimadas:", `~${analysis.summary.estimatedHours}h`);
-    printKeyValue("Complexidade geral:", analysis.summary.overallComplexity);
-  }
-  ui.blank();
+    // ── Phase filter ───────────────────────────────────────────────────────────
+    if (opts.phase) {
+        const ph = parseInt(opts.phase, 10);
+        filesToMigrate = filesToMigrate.filter((f) => f.phase === ph);
+        ui.info(
+            `Filtrando apenas Fase ${ph} (${filesToMigrate.length} arquivo(s))`,
+        );
+    }
 
-  // ── Dry-run: just show list ────────────────────────────────────────────────
-  if (opts.dryRun) {
-    ui.section("Dry-run — arquivos que seriam migrados (por fase)");
-    const phases = [...new Set(filesToMigrate.map((f) => f.phase))].sort();
-    const phaseNames = [
-      "",
-      "Services & Factories",
-      "Filters → Pipes",
-      "Directives & Components",
-      "Controllers",
-      "Templates",
-      "Roteamento",
-    ];
-    phases.forEach((ph) => {
-      console.log(chalk.bold(`\n  Fase ${ph}: ${phaseNames[ph] || ""}`));
-      filesToMigrate
-        .filter((f) => f.phase === ph)
-        .forEach((f) => {
-          const cc =
-            { alta: chalk.red, média: chalk.yellow, baixa: chalk.green }[
-              f.complexity
-            ] || chalk.white;
-          console.log(
-            `    ${chalk.dim("→")} ${f.path} ${cc(`[${f.complexity}]`)}`,
+    printKeyValue("Arquivos para migrar:", String(filesToMigrate.length));
+    if (analysis) {
+        printKeyValue("Horas estimadas:", `~${analysis.summary.estimatedHours}h`);
+        printKeyValue("Complexidade geral:", analysis.summary.overallComplexity);
+    }
+    ui.blank();
+
+    // ── Dry-run: just show list ────────────────────────────────────────────────
+    if (opts.dryRun) {
+        ui.section("Dry-run — arquivos que seriam migrados (por fase)");
+        const phases = [...new Set(filesToMigrate.map((f) => f.phase))].sort();
+        const phaseNames = [
+            "",
+            "Services & Factories",
+            "Filters → Pipes",
+            "Directives & Components",
+            "Controllers",
+            "Templates",
+            "Roteamento",
+        ];
+        phases.forEach((ph) => {
+                    console.log(chalk.bold(`\n  Fase ${ph}: ${phaseNames[ph] || ""}`));
+                    filesToMigrate
+                        .filter((f) => f.phase === ph)
+                        .forEach((f) => {
+                                const cc = { alta: chalk.red, média: chalk.yellow, baixa: chalk.green }[
+                                    f.complexity
+                                ] || chalk.white;
+                                console.log(
+                                        `    ${chalk.dim("→")} ${f.path} ${cc(`[${f.complexity}]`)}`,
           );
         });
     });
@@ -612,7 +611,7 @@ export async function migrateProjectCommand(projectPath, opts) {
       chalk.dim(`Executando npm install em ${chalk.cyan(installDir)}...`),
     ).start();
     try {
-      runNpmInstall(installDir);
+      await runNpmInstall(installDir);
       installSpinner.succeed(
         chalk.green("Dependências instaladas com sucesso!"),
       );
