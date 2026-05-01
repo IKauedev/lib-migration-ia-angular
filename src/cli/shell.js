@@ -7,14 +7,10 @@ import { tokenize } from "./tokenizer.js";
 import { dispatch } from "./dispatcher.js";
 import { loadConfig } from "../utils/config-manager.js";
 
-
-
 const CONFIG_DIR = path.join(os.homedir(), ".ng-migrate");
 const HISTORY_FILE = path.join(CONFIG_DIR, ".shell_history");
 const MAX_HISTORY = 500;
 const QUIET = process.argv.includes("--quiet") || process.argv.includes("-q");
-
-
 
 const ALIASES = {
   s: "scan",
@@ -29,8 +25,6 @@ const ALIASES = {
   e: "env",
   q: "exit",
 };
-
-
 
 const SHELL_COMMANDS = [
   "config",
@@ -51,7 +45,6 @@ const SHELL_COMMANDS = [
 ];
 
 function shellCompleter(line) {
-
   const migrateMatch = line.match(/^(migrate|m)\s+(.*)$/);
   if (migrateMatch) {
     const prefix = migrateMatch[1];
@@ -80,16 +73,12 @@ function shellCompleter(line) {
   return [hits.length ? hits : SHELL_COMMANDS, line];
 }
 
-
-
 function loadHistory() {
   try {
     if (fs.existsSync(HISTORY_FILE)) {
       return fs.readFileSync(HISTORY_FILE, "utf-8").split("\n").filter(Boolean);
     }
-  } catch {
-     
-  }
+  } catch {}
   return [];
 }
 
@@ -103,16 +92,11 @@ function appendHistory(cmd) {
     const trimmed =
       history.length > MAX_HISTORY ? history.slice(-MAX_HISTORY) : history;
     fs.writeFileSync(HISTORY_FILE, trimmed.join("\n") + "\n", "utf-8");
-  } catch {
-     
-  }
+  } catch {}
 }
-
-
 
 const PROMPT = chalk.bold.green("> ");
 
- 
 function showPrompt(rl) {
   if (!QUIET) {
     process.stdout.write(chalk.dim("  ? for shortcuts\n"));
@@ -120,8 +104,6 @@ function showPrompt(rl) {
   rl.setPrompt(PROMPT);
   rl.prompt();
 }
-
-
 
 function printShortcuts() {
   console.log();
@@ -165,8 +147,6 @@ function printShortcuts() {
   console.log();
 }
 
-
-
 function detectProject() {
   try {
     const analysisFile = path.join(process.cwd(), ".ng-migrate-analysis.json");
@@ -174,13 +154,9 @@ function detectProject() {
       const data = JSON.parse(fs.readFileSync(analysisFile, "utf-8"));
       return data.projectName || data.name || path.basename(process.cwd());
     }
-  } catch {
-     
-  }
+  } catch {}
   return null;
 }
-
-
 
 function getProviderInfo() {
   try {
@@ -188,13 +164,9 @@ function getProviderInfo() {
     const provider = config.activeProvider;
     const model = config.providers?.[provider]?.model || "";
     return { provider, model };
-  } catch {
-     
-  }
+  } catch {}
   return null;
 }
-
-
 
 function printShellWelcome() {
   if (QUIET) return;
@@ -207,7 +179,6 @@ function printShellWelcome() {
       argv1.endsWith("ng-migrate") ||
       argv1.endsWith("ng-migrate.cmd"));
 
-
   const provInfo = getProviderInfo();
   if (provInfo) {
     const label = provInfo.model
@@ -215,7 +186,6 @@ function printShellWelcome() {
       : provInfo.provider;
     console.log(chalk.dim("  ● ") + chalk.dim(label));
   }
-
 
   const project = detectProject();
   if (project) {
@@ -231,13 +201,11 @@ function printShellWelcome() {
     console.log(
       chalk.yellow("  ! ") +
         chalk.dim("Instale globalmente: ") +
-        chalk.cyan("npm install -g ng-migrate-ai"),
+        chalk.cyan("npm install -g ng-migrate-angularjs-ai"),
     );
     console.log();
   }
 }
-
-
 
 function resolveAlias(input) {
   const firstWord = input.split(/\s+/)[0];
@@ -247,9 +215,6 @@ function resolveAlias(input) {
   return input;
 }
 
-
-
- 
 export async function interactiveShell() {
   printShellWelcome();
 
@@ -266,7 +231,6 @@ export async function interactiveShell() {
 
   showPrompt(rl);
 
-
   rl.on("SIGINT", () => {
     process.stdout.write("\r\x1b[2K");
     if (!QUIET) console.log(chalk.dim("  (use 'exit' ou 'q' para sair)"));
@@ -281,16 +245,13 @@ export async function interactiveShell() {
       return;
     }
 
-
     if (["?", "help", "ajuda", "h"].includes(trimmed.toLowerCase())) {
       printShortcuts();
       showPrompt(rl);
       return;
     }
 
-
     const resolved = resolveAlias(trimmed);
-
 
     if (
       ["exit", "quit", "sair"].includes(resolved.split(/\s+/)[0].toLowerCase())
@@ -306,16 +267,13 @@ export async function interactiveShell() {
       process.exit(0);
     }
 
-
     appendHistory(trimmed);
-
 
     if (!QUIET) {
       console.log();
       console.log(chalk.dim("  " + "─".repeat(40)));
       console.log();
     }
-
 
     const t0 = Date.now();
     rl.pause();
@@ -344,6 +302,5 @@ export async function interactiveShell() {
     process.exit(0);
   });
 }
-
 
 export { showInteractiveHelp } from "./dispatcher.js";

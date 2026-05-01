@@ -7,8 +7,6 @@ import {
 import { dbgAI } from "../utils/debug.js";
 import { MODEL_TIERS } from "../core/persona/migration-persona.js";
 
-
-
 export const TASK_TYPES = {
   MIGRATION: "migration",
   ANALYSIS: "analysis",
@@ -16,15 +14,11 @@ export const TASK_TYPES = {
   CHAT: "chat",
 };
 
-
 const FAST_MODELS = {
   anthropic: "claude-haiku-3-5",
   openai: "gpt-4o-mini",
   openrouter: "anthropic/claude-haiku-3-5",
-
 };
-
-
 
 function extractAzureInstanceName(endpoint) {
   if (!endpoint) return "";
@@ -32,9 +26,6 @@ function extractAzureInstanceName(endpoint) {
   return match ? match[1] : endpoint;
 }
 
-
-
- 
 export async function buildModel(taskType = null, opts = {}) {
   const config = loadConfig();
 
@@ -66,7 +57,6 @@ export async function buildModel(taskType = null, opts = {}) {
   const maxTokens = opts.maxTokens !== undefined ? opts.maxTokens : 4096;
   const tier = opts.tier ?? MODEL_TIERS.STANDARD;
 
-
   const fastModel =
     !taskHasExplicitModel && tier === MODEL_TIERS.FAST
       ? FAST_MODELS[providerName]
@@ -79,7 +69,6 @@ export async function buildModel(taskType = null, opts = {}) {
     `task=${taskType || "default"} | tier=${tier} | model=${modelName || "(padrão)"} | maxTokens=${maxTokens}`,
   );
 
-
   if (providerName === "anthropic") {
     const { ChatAnthropic } = await import("@langchain/anthropic");
     return new ChatAnthropic({
@@ -89,7 +78,6 @@ export async function buildModel(taskType = null, opts = {}) {
     });
   }
 
-
   if (providerName === "openai") {
     const { ChatOpenAI } = await import("@langchain/openai");
     return new ChatOpenAI({
@@ -98,7 +86,6 @@ export async function buildModel(taskType = null, opts = {}) {
       maxTokens,
     });
   }
-
 
   if (providerName === "azure-openai") {
     const { AzureChatOpenAI } = await import("@langchain/openai");
@@ -111,7 +98,6 @@ export async function buildModel(taskType = null, opts = {}) {
     });
   }
 
-
   if (providerName === "gemini") {
     const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai");
     return new ChatGoogleGenerativeAI({
@@ -120,7 +106,6 @@ export async function buildModel(taskType = null, opts = {}) {
       maxOutputTokens: maxTokens,
     });
   }
-
 
   if (providerName === "openrouter") {
     const { ChatOpenAI } = await import("@langchain/openai");
@@ -133,12 +118,11 @@ export async function buildModel(taskType = null, opts = {}) {
         defaultHeaders: {
           "HTTP-Referer":
             "https://github.com/IKauedev/lib-migration-ia-angular",
-          "X-Title": "ng-migrate-ai",
+          "X-Title": "ng-migrate-angularjs-ai",
         },
       },
     });
   }
-
 
   if (providerName === "ollama") {
     const { ChatOpenAI } = await import("@langchain/openai");
@@ -153,7 +137,6 @@ export async function buildModel(taskType = null, opts = {}) {
       configuration: { baseURL: endpoint + "/v1" },
     });
   }
-
 
   if (providerName === "openai-compatible") {
     const { ChatOpenAI } = await import("@langchain/openai");

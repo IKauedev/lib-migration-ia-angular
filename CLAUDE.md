@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**ng-migrate-ai** — CLI for migrating AngularJS 1.x → Angular 21 using multi-provider AI (Anthropic Claude, OpenAI GPT, Azure OpenAI, Google Gemini).
+**ng-migrate-angularjs-ai** — CLI for migrating AngularJS 1.x → Angular 21 using multi-provider AI (Anthropic Claude, OpenAI GPT, Azure OpenAI, Google Gemini).
 
 **Version:** 2.0.0 | **License:** MIT | **Node:** 18+
 

@@ -1,7 +1,8 @@
-# ng-migrate-ai
+# ng-migrate-angularjs-ai
 
 > CLI inteligente para migração de **AngularJS 1.x → Angular 21** com suporte a múltiplos provedores de IA.
 
+**Pacote:** `ng-migrate-angularjs-ai`  
 **Versão:** 2.0.0  
 **Plataforma:** Node.js 18+ · Windows / macOS / Linux
 
@@ -39,10 +40,14 @@
 ## Instalação
 
 ```bash
-# Clone ou extraia o projeto
-cd ng-migrate-ai
+# Via npm (recomendado)
+npm install -g ng-migrate-angularjs-ai
+```
 
-# Instale as dependências
+```bash
+# Via código-fonte
+git clone https://github.com/IKauedev/lib-migration-ia-angular.git
+cd lib-migration-ia-angular
 npm install
 
 # (Opcional) instale globalmente

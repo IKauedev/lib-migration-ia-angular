@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# install.sh — Instalador global do ng-migrate-ai para Linux/macOS
+# install.sh — Instalador global do ng-migrate-angularjs-ai para Linux/macOS
 # ─────────────────────────────────────────────────────────────────────────────
 # Uso: chmod +x install.sh && ./install.sh
 
@@ -21,7 +21,7 @@ echo -e "${CYAN}    |  \\| | |  _|___| | |\\/| || | |  _| |_) |  / _ \\ | | |  _
 echo -e "${CYAN}    | |\\  | |_| |     | |  | || | |_| |  _ <  / ___ \\| | | |___${RESET}"
 echo -e "${CYAN}    |_| \\_|\\____|     |_|  |_|___\\____|_| \\_\\/_/   \\_\\_| |_____|${RESET}"
 echo ""
-echo -e "${BOLD}  Instalador — ng-migrate-ai v2.0.0${RESET}"
+echo -e "${BOLD}  Instalador — ng-migrate-angularjs-ai v0.0.1${RESET}"
 echo -e "${DIM}  Migração AngularJS → Angular 21 com IA${RESET}"
 echo ""
 echo -e "${DIM}  ─────────────────────────────────────────────────────────────${RESET}"
@@ -49,7 +49,7 @@ fi
 echo -e "${GREEN}  ✔ npm $(npm --version) detectado.${RESET}"
 
 # ── Instalar globalmente ───────────────────────────────────────────────────────
-echo -e "${YELLOW}  [3/3] Instalando ng-migrate-ai globalmente...${RESET}"
+echo -e "${YELLOW}  [3/3] Instalando ng-migrate-angularjs-ai globalmente...${RESET}"
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,7 +58,7 @@ npm install -g "$SCRIPT_DIR"
 echo ""
 echo -e "${DIM}  ─────────────────────────────────────────────────────────────${RESET}"
 echo ""
-echo -e "${GREEN}  ✔ ng-migrate-ai instalado com sucesso!${RESET}"
+echo -e "${GREEN}  ✔ ng-migrate-angularjs-ai instalado com sucesso!${RESET}"
 echo ""
 echo -e "${BOLD}  Como usar:${RESET}"
 echo -e "    ${CYAN}ng-migrate${RESET}              ${DIM}Abre o shell interativo${RESET}"
@@ -66,5 +66,5 @@ echo -e "    ${CYAN}ng-migrate config${RESET}       ${DIM}Configura o provedor d
 echo -e "    ${CYAN}ng-migrate scan${RESET}         ${DIM}Analisa o projeto AngularJS${RESET}"
 echo -e "    ${CYAN}ng-migrate migrate-project${RESET}  ${DIM}Migra o projeto completo${RESET}"
 echo ""
-echo -e "${DIM}  Documentação: https://github.com/seu-usuario/ng-migrate-ai${RESET}"
+echo -e "${DIM}  Documentação: https://github.com/seu-usuario/ng-migrate-angularjs-ai${RESET}"
 echo ""

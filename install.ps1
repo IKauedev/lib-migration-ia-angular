@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# install.ps1 — Instalador global do ng-migrate-ai para Windows (PowerShell)
+# install.ps1 — Instalador global do ng-migrate-angularjs-ai para Windows (PowerShell)
 # ─────────────────────────────────────────────────────────────────────────────
 # Uso: .\install.ps1
 # Requisitos: Node.js 18+, npm
@@ -12,7 +12,7 @@ Write-Host "  ██║╚██╗██║██║   ██║╚════
 Write-Host "  ██║ ╚████║╚██████╔╝      ██║ ╚═╝ ██║██║╚██████╔╝██║  ██║██║  ██║   ██║   ███████╗" -ForegroundColor Cyan
 Write-Host "  ╚═╝  ╚═══╝ ╚═════╝       ╚═╝     ╚═╝╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚══════╝" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Instalador — ng-migrate-ai v2.0.0" -ForegroundColor White
+Write-Host "  Instalador — ng-migrate-angularjs-ai v0.0.1" -ForegroundColor White
 Write-Host "  Migração AngularJS → Angular 21 com IA" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  ─────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
@@ -30,7 +30,8 @@ try {
         exit 1
     }
     Write-Host "  ✔ Node.js $nodeVersion detectado." -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✖ Node.js não encontrado. Instale em: https://nodejs.org" -ForegroundColor Red
     exit 1
 }
@@ -41,13 +42,14 @@ try {
     $npmVersion = npm --version 2>&1
     if ($LASTEXITCODE -ne 0) { throw "npm não encontrado" }
     Write-Host "  ✔ npm $npmVersion detectado." -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✖ npm não encontrado. Instale em: https://nodejs.org" -ForegroundColor Red
     exit 1
 }
 
 # ── Instalar globalmente ───────────────────────────────────────────────────────
-Write-Host "  [3/3] Instalando ng-migrate-ai globalmente..." -ForegroundColor Yellow
+Write-Host "  [3/3] Instalando ng-migrate-angularjs-ai globalmente..." -ForegroundColor Yellow
 Write-Host ""
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -62,7 +64,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "  ─────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  ✔ ng-migrate-ai instalado com sucesso!" -ForegroundColor Green
+Write-Host "  ✔ ng-migrate-angularjs-ai instalado com sucesso!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Como usar:" -ForegroundColor White
 Write-Host "    ng-migrate              " -NoNewline -ForegroundColor Cyan

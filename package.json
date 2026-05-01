@@ -14,9 +14,9 @@
     "migrate": "node src/index.js migrate",
     "repl": "node src/index.js repl",
     "install-global": "npm install -g .",
-    "uninstall-global": "npm uninstall -g ng-migrate-ai",
-    "prepublishOnly": "node -e \"console.log('Publicando ng-migrate-ai...')\"",
-    "postinstall": "node -e \"console.log('\\n  ng-migrate-ai instalado! Execute: ng-migrate\\n')\""
+    "uninstall-global": "npm uninstall -g ng-migrate-angularjs-ai",
+    "prepublishOnly": "node -e \"console.log('Publicando ng-migrate-angularjs-ai...')\"",
+    "postinstall": "node -e \"console.log('\\n  ng-migrate-angularjs-ai instalado! Execute: ng-migrate-angularjs-ai\\n')\""
   },
   "engines": {
     "node": ">=18.0.0",

@@ -4,7 +4,6 @@ import os from "os";
 
 const ENV_FILE = path.join(os.homedir(), ".ng-migrate", ".env");
 
- 
 export function loadEnvFile() {
   if (!fs.existsSync(ENV_FILE)) return;
 
@@ -54,9 +53,7 @@ export function readEnvFile() {
         .replace(/^["']|["']$/g, "");
       if (key) result[key] = val;
     }
-  } catch {
-     
-  }
+  } catch {}
 
   return result;
 }
@@ -66,7 +63,7 @@ export function writeEnvFile(vars) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const lines = [
-    "# ng-migrate-ai — variáveis de ambiente",
+    "# ng-migrate-angularjs-ai — variáveis de ambiente",
     "# Gerado automaticamente. Edite com: ng-migrate env set KEY VALUE",
     "",
     ...Object.entries(vars).map(([k, v]) => `${k}=${v}`),

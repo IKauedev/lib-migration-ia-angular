@@ -362,7 +362,7 @@ export async function migrateRepoCommand(repoArg, opts) {
   let prUrl = null;
 
   if (opts.createPr && stats.success > 0) {
-    const prBranch = `ng-migrate-ai/${Date.now()}`;
+    const prBranch = `ng-migrate-angularjs-ai/${Date.now()}`;
     spinner = ora(
       chalk.dim(`Criando branch ${prBranch} e enviando arquivos...`),
     ).start();
@@ -415,7 +415,7 @@ export async function migrateRepoCommand(repoArg, opts) {
           repo,
           prBranch,
           branch,
-          `🚀 Migração AngularJS → Angular 21 (ng-migrate-ai)`,
+          `🚀 Migração AngularJS → Angular 21 (ng-migrate-angularjs-ai)`,
           buildPRBody(stats, depReport),
         );
         prUrl = pr.html_url;
@@ -447,7 +447,7 @@ export async function migrateRepoCommand(repoArg, opts) {
           repoPath,
           prBranch,
           branch,
-          `🚀 Migração AngularJS → Angular 21 (ng-migrate-ai)`,
+          `🚀 Migração AngularJS → Angular 21 (ng-migrate-angularjs-ai)`,
           buildPRBody(stats, depReport),
         );
         prUrl = mr.web_url;
@@ -495,7 +495,7 @@ function buildPRBody(stats, depReport) {
   const lines = [
     `## 🤖 Migração automática AngularJS → Angular 21`,
     ``,
-    `Gerado por **ng-migrate-ai** usando Claude AI.`,
+    `Gerado por **ng-migrate-angularjs-ai** usando Claude AI.`,
     ``,
     `### Resumo`,
     `- ✅ **${stats.success}** arquivos migrados`,
