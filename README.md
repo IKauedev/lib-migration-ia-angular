@@ -12,24 +12,27 @@
 1. [Instalação](#instalação)
 2. [Configuração rápida](#configuração-rápida)
 3. [Provedores de IA suportados](#provedores-de-ia-suportados)
-4. [Comandos](#comandos)
+4. [Shell Interativo](#shell-interativo)
+5. [Comandos](#comandos)
    - [config — Configurar provedor de IA](#config--configurar-provedor-de-ia)
    - [env — Gerenciar variáveis de ambiente](#env--gerenciar-variáveis-de-ambiente)
    - [scan — Analisar projeto](#scan--analisar-projeto)
+   - [start — Pipeline automático](#start--pipeline-automático)
    - [migrate-project — Migrar projeto local](#migrate-project--migrar-projeto-local)
    - [migrate-repo — Migrar repositório remoto](#migrate-repo--migrar-repositório-remoto)
    - [migrate — Migrar arquivo único](#migrate--migrar-arquivo-único)
    - [analyze — Analisar com IA](#analyze--analisar-com-ia)
    - [repl — Modo interativo](#repl--modo-interativo)
    - [checklist — Checklist de migração](#checklist--checklist-de-migração)
-5. [Fluxo de trabalho recomendado](#fluxo-de-trabalho-recomendado)
-6. [Arquivos gerados pelo scan](#arquivos-gerados-pelo-scan)
-7. [Estrutura de saída da migração](#estrutura-de-saída-da-migração)
-8. [O que é migrado automaticamente](#o-que-é-migrado-automaticamente)
-9. [Tokens de acesso](#tokens-de-acesso)
-10. [Executando no Windows](#executando-no-windows)
-11. [Configuração armazenada](#configuração-armazenada)
-12. [Requisitos](#requisitos)
+6. [Fluxo de trabalho recomendado](#fluxo-de-trabalho-recomendado)
+7. [Arquivos gerados pelo scan](#arquivos-gerados-pelo-scan)
+8. [Estrutura de saída da migração](#estrutura-de-saída-da-migração)
+9. [O que é migrado automaticamente](#o-que-é-migrado-automaticamente)
+10. [Tokens de acesso](#tokens-de-acesso)
+11. [Executando no Windows](#executando-no-windows)
+12. [Configuração armazenada](#configuração-armazenada)
+13. [Arquitetura interna](#arquitetura-interna)
+14. [Requisitos](#requisitos)
 
 ---
 
@@ -80,15 +83,55 @@ ng-migrate migrate-project
 
 ## Provedores de IA suportados
 
-| Provedor | Variável de Ambiente | Observação |
-|---|---|---|
-| **Anthropic Claude** | `ANTHROPIC_API_KEY` | Recomendado — melhor qualidade na migração |
-| **OpenAI GPT** | `OPENAI_API_KEY` | GPT-4o e variantes |
-| **Azure OpenAI** | `AZURE_OPENAI_KEY` + `AZURE_OPENAI_ENDPOINT` | Para ambientes corporativos |
-| **Google Gemini** | `GOOGLE_API_KEY` | Gemini 1.5 Pro / Flash |
-| **OpenAI-compatible** | Configurável via `config` | Ollama, Together AI, Groq, etc. |
+| Provedor | Variável de Ambiente | Modelos padrão | Observação |
+|---|---|---|---|
+| **Anthropic Claude** | `ANTHROPIC_API_KEY` | `claude-opus-4-5`, `claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307` | Recomendado — melhor qualidade na migração |
+| **OpenAI GPT** | `OPENAI_API_KEY` | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo` | GPT-4o e variantes |
+| **Azure OpenAI** | `AZURE_OPENAI_KEY` + `AZURE_OPENAI_ENDPOINT` | Configurável via deployment | Para ambientes corporativos |
+| **Google Gemini** | `GOOGLE_API_KEY` | `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash` | Gemini 2.0 Flash / 1.5 Pro |
+| **OpenAI-Compatible** | Configurável via `config` | Qualquer modelo compatível | Groq, Together AI, etc. |
+| **OpenRouter** | `OPENROUTER_API_KEY` | `anthropic/claude-opus-4-5`, `openai/gpt-4o`, `deepseek/deepseek-r1`, etc. | Acesso unificado a múltiplos modelos |
+| **Ollama (local)** | — (sem chave) | `llama3`, `codellama`, `mistral`, `qwen2.5-coder`, etc. | Execução 100% local |
 
 Você pode trocar o provedor a qualquer momento com `ng-migrate config`.
+
+---
+
+## Shell Interativo
+
+Ao executar `ng-migrate` **sem argumentos**, a CLI abre um shell interativo completo com histórico de comandos e autocompletar por `Tab`:
+
+```bash
+ng-migrate
+# Abre o shell interativo ng-migrate>
+```
+
+```
+ng-migrate> scan ./meu-projeto
+ng-migrate> migrate-project --dry-run
+ng-migrate> config
+ng-migrate> exit
+```
+
+**Recursos do shell:**
+- **Histórico persistente** salvo em `~/.ng-migrate/.shell_history` (até 500 entradas)
+- **Autocompletar** com `Tab` — completa comandos e caminhos de arquivo para `migrate <arquivo>`
+- **Verificação de API keys** ao iniciar — exibe status de todos os provedores configurados
+- **Aliases curtos** para agilidade:
+
+| Alias | Comando completo |
+|---|---|
+| `s` | `scan` |
+| `m` | `migrate` |
+| `mp` | `migrate-project` |
+| `mr` | `migrate-repo` |
+| `a` | `analyze` |
+| `c` | `config` |
+| `cl` | `checklist` |
+| `st` | `start` |
+| `r` | `repl` |
+| `e` | `env` |
+| `q` | `exit` |
 
 ---
 
@@ -99,18 +142,30 @@ Você pode trocar o provedor a qualquer momento com `ng-migrate config`.
 Abre um assistente interativo para selecionar e configurar o provedor de IA.
 
 ```bash
-ng-migrate config           # Assistente interativo
-ng-migrate config --show    # Exibe a configuração atual
-ng-migrate config --reset   # Remove todas as configurações salvas
+ng-migrate config               # Assistente interativo
+ng-migrate config --show        # Exibe a configuração atual
+ng-migrate config --reset       # Remove todas as configurações salvas
+ng-migrate config --task-model  # Configura modelos específicos por tarefa
 ```
 
 **O assistente pergunta:**
-- Qual provedor usar (Anthropic, OpenAI, Azure OpenAI, Google Gemini, etc.)
+- Qual provedor usar (Anthropic, OpenAI, Azure OpenAI, Google Gemini, OpenRouter, Ollama, etc.)
 - API Key (exibida como senha, não aparece no terminal)
 - Campos específicos do provedor (endpoint Azure, deployment, versão da API, etc.)
-- Qual modelo usar (ex: `claude-opus-4-5`, `gpt-4o`, `gemini-1.5-pro`)
+- Qual modelo usar (ex: `claude-opus-4-5`, `gpt-4o`, `gemini-2.0-flash`)
 
 A configuração é salva em `~/.ng-migrate/config.json` e reutilizada automaticamente.
+
+**`--task-model` — modelos por tarefa:**
+
+Permite configurar modelos diferentes para cada tipo de operação:
+
+| Tarefa | Descrição |
+|---|---|
+| `migration` | Migração de arquivo (`migrate`) |
+| `analysis` | Análise de arquivo/projeto (`analyze`) |
+| `scan` | Varredura com IA (`scan --ai`) |
+| `chat` | REPL interativo (`repl`) |
 
 ---
 
@@ -190,6 +245,32 @@ ng-migrate scan --no-save        # Não salva os arquivos de análise
 
 ---
 
+### `start` — Pipeline automático
+
+Executa o pipeline completo de migração em 4 fases de forma totalmente automatizada: escaneia, planeja, confirma e migra.
+
+```bash
+ng-migrate start                     # Pipeline na pasta atual
+ng-migrate start ./meu-projeto       # Pipeline em pasta específica
+ng-migrate start --only "src/**"     # Filtra por glob
+ng-migrate start --phase 1           # Executa apenas a fase 1 (services)
+```
+
+**Aliases em português:** `ng-migrate iniciar`
+
+**As 4 fases do pipeline:**
+
+| Fase | O que acontece |
+|---|---|
+| **1/4 — Escanear** | Detecta todos os arquivos AngularJS, complexidade e dependências |
+| **2/4 — Planejar** | Exibe resumo completo: arquivos, complexidade, horas estimadas, plano de fases |
+| **3/4 — Confirmar** | Pergunta confirmação antes de qualquer alteração |
+| **4/4 — Migrar** | Executa `migrate-project` com as opções definidas |
+
+> Diferente de `migrate-project`, o `start` é interativo — exibe o plano completo e pede confirmação antes de migrar.
+
+---
+
 ### `migrate-project` — Migrar projeto local
 
 Migra todos os arquivos AngularJS de uma pasta local para Angular 21, usando a análise do `scan` para determinar ordem e contexto.
@@ -201,11 +282,12 @@ ng-migrate migrate-project ./src/app          # Migra subfolder específico
 ng-migrate migrate-project --in-place         # Migra dentro do próprio projeto
 ng-migrate migrate-project -o ./saida         # Define pasta de saída
 ng-migrate migrate-project --dry-run          # Lista o que seria migrado sem executar
-ng-migrate migrate-project --concurrency 5   # 5 arquivos em paralelo
-ng-migrate migrate-project --phase 1         # Migra apenas serviços/factories
-ng-migrate migrate-project --only "src/**"   # Filtra por glob
-ng-migrate migrate-project --skip-deps       # Não atualiza package.json
-ng-migrate migrate-project --skip-install    # Não executa npm install ao final
+ng-migrate migrate-project --concurrency 5    # 5 arquivos em paralelo
+ng-migrate migrate-project --phase 1          # Migra apenas serviços/factories
+ng-migrate migrate-project --only "src/**"    # Filtra por glob
+ng-migrate migrate-project --skip-deps        # Não atualiza package.json
+ng-migrate migrate-project --skip-install     # Não executa npm install ao final
+ng-migrate migrate-project --fresh            # Ignora checkpoint e começa do zero
 ng-migrate migrate-project --clone https://github.com/usuario/repo  # Clona e migra
 ```
 
@@ -227,6 +309,7 @@ ng-migrate migrate-project --clone https://github.com/usuario/repo  # Clona e mi
 | `--phase <n>` | — | Migra apenas a fase N (1–6) |
 | `--skip-deps` | — | Não atualiza o `package.json` |
 | `--skip-install` | — | Não executa `npm install` ao final |
+| `--fresh` | — | Ignora checkpoint existente e reinicia do zero |
 
 **Modo `--in-place` — dentro do próprio projeto:**
 
@@ -403,7 +486,21 @@ O checklist inclui todos os passos necessários para uma migração bem-sucedida
 
 ## Fluxo de trabalho recomendado
 
-### Projeto local
+### Opção A — Pipeline automático (`start`)
+
+```bash
+# 1. Configure a IA (apenas uma vez)
+ng-migrate config
+
+# 2. Vá até a pasta do projeto
+cd meu-projeto-angularjs
+
+# 3. Inicie o pipeline completo
+ng-migrate start
+# → Escaneia, exibe o plano, pede confirmação e migra automaticamente
+```
+
+### Opção B — Controle manual
 
 ```bash
 # Passo 1: Configure a IA (apenas uma vez)
@@ -437,6 +534,11 @@ ng-migrate migrate-project --in-place
 
 # Migrando direto de um repositório remoto
 ng-migrate migrate-project --clone https://github.com/usuario/repo
+
+# Retomar migração interrompida (usa checkpoint automático)
+ng-migrate migrate-project
+# Para reiniciar do zero ignorando o checkpoint:
+ng-migrate migrate-project --fresh
 
 # Passo 7: Revise e corrija os erros
 # O relatório MIGRATION_REPORT_*.md lista os arquivos com problema
@@ -662,20 +764,110 @@ ng-migrate scan
 
 | Local | Conteúdo |
 |---|---|
-| `~/.ng-migrate/config.json` | Provedor de IA, modelo, API keys (via `config`) |
+| `~/.ng-migrate/config.json` | Provedor de IA, modelo, API keys, modelos por tarefa (via `config`) |
 | `~/.ng-migrate/.env` | Variáveis de ambiente (via `env`) |
+| `~/.ng-migrate/.shell_history` | Histórico do shell interativo (até 500 entradas) |
 | `<projeto>/.ng-migrate-analysis.json` | Análise estática do projeto |
 | `<projeto>/.ng-migrate-registry.json` | Mapa de símbolos e rotas |
 | `<projeto>/.ng-migrate-deps-graph.json` | Grafo de dependências entre arquivos |
+| `<projeto>/.ng-migrate-cache.json` | Cache de arquivos já migrados (evita re-migração) |
 
 > Adicione os arquivos `.ng-migrate-*.json` ao `.gitignore` se não quiser versioná-los, ou mantenha-os para acelerar migrações futuras.
+
+---
+
+## Arquitetura interna
+
+```
+src/
+├── index.js                      # Ponto de entrada — Commander CLI
+├── cli/
+│   ├── shell.js                  # Shell interativo (readline, histórico, autocompletar)
+│   ├── dispatcher.js             # Despacha comandos do shell para os handlers
+│   ├── tokenizer.js              # Tokeniza linha de comando do shell
+│   └── wizard.js                 # Wizard interativo (verificação de API keys)
+├── commands/                     # Handlers de cada comando CLI
+│   ├── config.js                 # ng-migrate config
+│   ├── env.js                    # ng-migrate env
+│   ├── scan.js                   # ng-migrate scan
+│   ├── start.js                  # ng-migrate start (pipeline automático)
+│   ├── migrate-project.js        # ng-migrate migrate-project
+│   ├── migrate-repo.js           # ng-migrate migrate-repo
+│   ├── migrate.js                # ng-migrate migrate <arquivo>
+│   ├── analyze.js                # ng-migrate analyze
+│   ├── repl.js                   # ng-migrate repl
+│   └── checklist.js              # ng-migrate checklist
+├── core/
+│   ├── orchestrator.js           # MigrationOrchestrator — cache por hash, roteamento de modelos
+│   ├── context/
+│   │   └── project-context.js    # Contexto do projeto para injeção nos prompts
+│   ├── git/
+│   │   ├── github.js             # API GitHub
+│   │   ├── gitlab.js             # API GitLab
+│   │   └── index.js              # Façade de providers git
+│   ├── migration/
+│   │   └── classifier.js         # Detecção de padrões AngularJS e skip de arquivos
+│   ├── persona/
+│   │   └── migration-persona.js  # ARIA — persona, regras absolutas R1-R9, model tiers
+│   └── scanner/
+│       ├── analyzer.js           # Detecta tipo, complexidade, padrões, dependências
+│       ├── extractor.js          # Extrai símbolos, rotas, módulos, grafo de deps
+│       ├── phase-planner.js      # Calcula fase e horas estimadas por arquivo
+│       └── index.js              # scanProject() — orquestra o scan completo
+├── providers/
+│   ├── clients.js                # Construtores dos clientes de IA (Anthropic, OpenAI, etc.)
+│   ├── router.js                 # sendToProvider() — roteia chamadas ao provedor ativo
+│   └── langchain.js              # Integração LangChain (opcional)
+└── utils/                        # Utilitários legados / compatibilidade
+    ├── ai-providers.js           # Builders de clientes (compatibilidade)
+    ├── ai.js                     # migrateWithAI(), analyzeWithAI()
+    ├── config-manager.js         # loadConfig(), saveConfig(), PROVIDERS
+    ├── debug.js                  # Modo debug (--debug)
+    ├── deps-migrator.js          # Migração de package.json
+    ├── env-loader.js             # Carrega ~/.ng-migrate/.env
+    ├── git-providers.js          # GitHub/GitLab API wrappers
+    ├── langchain-provider.js     # LangChain integration
+    ├── ng-checker.js             # Angular CLI install, git clone, ng new
+    ├── parser.js                 # Extrai blocos de código das respostas da IA
+    ├── project-scanner.js        # Scanner legado (compat)
+    ├── report.js                 # Geração de MIGRATION_REPORT_*.md
+    └── ui.js                     # printBanner(), ui helpers, chalk
+```
+
+### ARIA — Agente de migração
+
+A IA opera sob a persona **ARIA** (*Angular Refactoring Intelligence Agent*), com regras absolutas que garantem código Angular 21 idiomático e completo:
+
+| Regra | Descrição |
+|---|---|
+| **R1** | Código **completo** — sem `// TODO`, placeholders ou trechos omitidos |
+| **R2** | `standalone: true` em 100% dos Components, Pipes e Directives |
+| **R3** | `signal()` para estado reativo, `computed()` para derivados, `effect()` para side-effects |
+| **R4** | `inject()` para injeção de dependências — construtor apenas quando `super()` é obrigatório |
+| **R5** | Template control flow moderno: `@if`, `@for` (com `track`), `@switch`, `@defer` |
+| **R6** | TypeScript strict — tipo explícito em propriedades públicas e parâmetros |
+| **R7** | Nomenclatura consistente: `myCtrl` → `MyComponent`, `userSvc` → `UserService` |
+| **R8** | Sem comentários explicativos — código auto-documentado |
+| **R9** | Preservar 100% da lógica de negócio original |
+
+### Roteamento de modelos por complexidade
+
+O `MigrationOrchestrator` seleciona automaticamente o tier do modelo com base na complexidade e fase de cada arquivo:
+
+| Tier | Usado para |
+|---|---|
+| **fast** | Arquivos de baixa complexidade · Filtros · Templates |
+| **standard** | Complexidade média · Services · Directives · Controllers |
+| **premium** | Alta complexidade · Routing & Modules (fase 6) |
+
+O cache (`.ng-migrate-cache.json`) usa hash SHA-256 do conteúdo — arquivos não modificados não são re-migrados.
 
 ---
 
 ## Requisitos
 
 - **Node.js** 18 ou superior
-- Pelo menos **uma** chave de API de IA (Anthropic, OpenAI, Azure ou Google)
+- Pelo menos **uma** chave de API de IA (Anthropic, OpenAI, Azure, Google, OpenRouter) **ou** Ollama rodando localmente
 - Para `migrate-repo`: token GitHub ou GitLab com escopos de leitura
 
 ---
