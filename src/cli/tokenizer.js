@@ -1,14 +1,3 @@
-/**
- * CLI input tokenizer.
- * Splits a raw command string into tokens respecting quoted strings.
- */
-
-/**
- * Tokenizes a command line string, respecting quoted strings.
- * Example: 'migrate "my file.js" --dry-run' → ['migrate', 'my file.js', '--dry-run']
- * @param {string} input
- * @returns {string[]}
- */
 export function tokenize(input) {
     const tokens = [];
     let current = "";
@@ -39,14 +28,7 @@ export function tokenize(input) {
     return tokens;
 }
 
-/**
- * Reads one flag token starting at index i.
- * Returns { key, value, advance } — advance is how many tokens to skip.
- * @param {string[]} tokens
- * @param {number} i
- * @param {number} prefix  Number of leading dash chars to strip
- * @returns {{ key: string, value: string|true, advance: number }}
- */
+ 
 export function readFlag(tokens, i, prefix) {
     const key = tokens[i].slice(prefix);
     if (i + 1 < tokens.length && !tokens[i + 1].startsWith("-")) {
@@ -55,11 +37,7 @@ export function readFlag(tokens, i, prefix) {
     return { key, value: true, advance: 1 };
 }
 
-/**
- * Splits token array into positional args and --option flags.
- * @param {string[]} tokens
- * @returns {{ args: string[], opts: Record<string, string|boolean> }}
- */
+ 
 export function parseOpts(tokens) {
     const args = [];
     const opts = {};

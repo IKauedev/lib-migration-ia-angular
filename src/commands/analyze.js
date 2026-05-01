@@ -44,7 +44,7 @@ export async function analyzeCommand(target, opts) {
   for (const file of files) {
     const code = fs.readFileSync(file, "utf-8");
 
-    // Skip arquivos que não parecem AngularJS
+
     if (!looksLikeAngularJS(code)) {
       dbg(
         `skip (sem padrões AngularJS): ${path.relative(isDir ? targetPath : path.dirname(file), file)}`,
@@ -87,7 +87,7 @@ export async function analyzeCommand(target, opts) {
     return;
   }
 
-  // Resumo geral
+
   const altas = results.filter((r) => r.complexidade === "alta").length;
   const medias = results.filter((r) => r.complexidade === "média").length;
   const baixas = results.filter((r) => r.complexidade === "baixa").length;
@@ -100,7 +100,7 @@ export async function analyzeCommand(target, opts) {
   printKeyValue("Complexidade média:", chalk.yellow(String(medias)));
   printKeyValue("Complexidade baixa:", chalk.green(String(baixas)));
 
-  // Detalhes por arquivo
+
   for (const r of results) {
     ui.blank();
     console.log(

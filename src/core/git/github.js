@@ -1,7 +1,3 @@
-/**
- * GitHub REST API client.
- */
-
 import fetch from "node-fetch";
 
 export class GitHubClient {

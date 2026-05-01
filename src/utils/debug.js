@@ -2,16 +2,13 @@ import chalk from "chalk";
 
 const PREFIX = chalk.gray("  [debug]");
 
-// ── Activation ────────────────────────────────────────────────────────────────
+
 
 export function isDebug() {
   return process.env.NG_MIGRATE_DEBUG === "1";
 }
 
-/**
- * Sets NG_MIGRATE_DEBUG and prints the activation banner.
- * Call this from the CLI preAction hook when --debug is passed.
- */
+ 
 export function activateDebug() {
   process.env.NG_MIGRATE_DEBUG = "1";
   console.log(
@@ -19,13 +16,13 @@ export function activateDebug() {
   );
 }
 
-// ── Generic log ───────────────────────────────────────────────────────────────
+
 
 export function dbg(msg) {
   if (isDebug()) console.log(`${PREFIX} ${msg}`);
 }
 
-// ── File operations ───────────────────────────────────────────────────────────
+
 
 const FILE_ICONS = {
   lendo: "📄",
@@ -37,11 +34,7 @@ const FILE_ICONS = {
   copiando: "📋",
 };
 
-/**
- * @param {"lendo"|"escrevendo"|"backup"|"skip"|"criando"|"deletando"|"copiando"} action
- * @param {string} filePath
- * @param {string} [detail]
- */
+ 
 export function dbgFile(action, filePath, detail = "") {
   if (!isDebug()) return;
   const icon = FILE_ICONS[action] ?? "📌";
@@ -51,15 +44,11 @@ export function dbgFile(action, filePath, detail = "") {
   );
 }
 
-// ── AI operations ─────────────────────────────────────────────────────────────
+
 
 const AI_ICONS = { enviando: "🤖", resposta: "✅", erro: "❌", modelo: "⚙️" };
 
-/**
- * @param {"enviando"|"resposta"|"erro"|"modelo"} action
- * @param {string} context  e.g. model name or file being processed
- * @param {string} [detail]
- */
+ 
 export function dbgAI(action, context, detail = "") {
   if (!isDebug()) return;
   const icon = AI_ICONS[action] ?? "◈";
@@ -69,7 +58,7 @@ export function dbgAI(action, context, detail = "") {
   );
 }
 
-// ── Directory / scaffold operations ───────────────────────────────────────────
+
 
 const DIR_ICONS = {
   criando: "📁",
@@ -78,11 +67,7 @@ const DIR_ICONS = {
   limpando: "🧹",
 };
 
-/**
- * @param {"criando"|"scaffolding"|"backup"|"limpando"} action
- * @param {string} dirPath
- * @param {string} [detail]
- */
+ 
 export function dbgDir(action, dirPath, detail = "") {
   if (!isDebug()) return;
   const icon = DIR_ICONS[action] ?? "📁";
@@ -92,7 +77,7 @@ export function dbgDir(action, dirPath, detail = "") {
   );
 }
 
-// ── Phase / pipeline ──────────────────────────────────────────────────────────
+
 
 export function dbgPhase(phase, name, count) {
   if (!isDebug()) return;
@@ -106,7 +91,7 @@ export function dbgStep(msg) {
   console.log(`${PREFIX} ⚡ ${chalk.bold(msg)}`);
 }
 
-// ── Scan ──────────────────────────────────────────────────────────────────────
+
 
 export function dbgScan(filePath, patterns, complexity) {
   if (!isDebug()) return;

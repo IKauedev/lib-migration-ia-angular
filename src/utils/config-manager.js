@@ -84,7 +84,7 @@ const DEFAULT_CONFIG = {
   providers: {
     anthropic: { model: "claude-opus-4-5" },
   },
-  taskModels: {}, // empty = use activeProvider for all tasks
+  taskModels: {},
 };
 
 export function loadConfig() {
@@ -93,7 +93,7 @@ export function loadConfig() {
     providers: { ...DEFAULT_CONFIG.providers },
   };
 
-  // Load from file
+
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
@@ -102,10 +102,10 @@ export function loadConfig() {
       config.taskModels = saved.taskModels ? { ...saved.taskModels } : {};
     }
   } catch {
-    /* use defaults */
+     
   }
 
-  // Inject env-var API keys as fallback (never override file config)
+
   const envMappings = [
     ["anthropic", "ANTHROPIC_API_KEY", { model: "claude-opus-4-5" }],
     ["openai", "OPENAI_API_KEY", { model: "gpt-4o" }],
@@ -129,7 +129,7 @@ export function loadConfig() {
     }
   }
 
-  // Extra Azure env vars
+
   if (
     config.providers["azure-openai"] &&
     !config.providers["azure-openai"].endpoint
@@ -145,7 +145,7 @@ export function loadConfig() {
         process.env.AZURE_OPENAI_API_VERSION;
   }
 
-  // Inject OLLAMA_HOST env var
+
   if (process.env.OLLAMA_HOST && !config.providers.ollama?.endpoint) {
     config.providers.ollama = {
       model: "llama3",
@@ -154,7 +154,7 @@ export function loadConfig() {
     };
   }
 
-  // Auto-detect active provider from available keys if the configured one has no key
+
   const activeCfg = config.providers[config.activeProvider];
   const activeOk =
     activeCfg?.apiKey ||
@@ -194,10 +194,7 @@ export function getProviderConfig(config, providerName) {
   return config.providers[providerName || config.activeProvider];
 }
 
-/**
- * Returns provider-specific validation errors (endpoint, deployment, etc.).
- * Extracted to keep assertReadyToMigrate below complexity threshold.
- */
+ 
 function providerSpecificErrors(provider, provCfg) {
   const errors = [];
   if (provider === "azure-openai") {
@@ -218,10 +215,7 @@ function providerSpecificErrors(provider, provCfg) {
   return errors;
 }
 
-/**
- * Verifies that the active provider is fully configured before a migration.
- * Returns { ok: true } on success, or { ok: false, errors: string[] } on failure.
- */
+ 
 export function assertReadyToMigrate() {
   let config;
   try {

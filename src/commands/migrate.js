@@ -45,13 +45,13 @@ export async function migrateCommand(arquivo, opts) {
 
   const result = parseMigrateResponse(raw);
 
-  // Tipo detectado
+
   if (result.tipo) {
     ui.blank();
     ui.info(`Tipo detectado: ${chalk.bold(result.tipo)}`);
   }
 
-  // Padrões AngularJS
+
   if (result.padroes.length > 0) {
     ui.section('Padrões AngularJS detectados');
     result.padroes.forEach(p => {
@@ -59,7 +59,7 @@ export async function migrateCommand(arquivo, opts) {
     });
   }
 
-  // Mostrar diff / código
+
   if (opts.showDiff && result.codigoOriginal && result.codigoMigrado) {
     ui.code('angularjs', result.codigoOriginal);
     ui.code('angular', result.codigoMigrado);
@@ -68,7 +68,7 @@ export async function migrateCommand(arquivo, opts) {
     ui.code('angular', result.codigoMigrado);
   }
 
-  // Mudanças
+
   if (result.mudancas.length > 0) {
     ui.section('Mudanças aplicadas');
     result.mudancas.forEach(m => {
@@ -76,7 +76,7 @@ export async function migrateCommand(arquivo, opts) {
     });
   }
 
-  // Notas
+
   if (result.notas) {
     ui.section('Notas importantes');
     result.notas.split('\n').forEach(n => {
@@ -84,7 +84,7 @@ export async function migrateCommand(arquivo, opts) {
     });
   }
 
-  // Salvar arquivo
+
   if (!opts.dryRun && result.codigoMigrado) {
     const outPath = opts.output
       ? path.resolve(opts.output)

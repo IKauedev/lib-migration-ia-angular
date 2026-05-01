@@ -1,35 +1,20 @@
-/**
- * Migration pre-flight wizard.
- * Asks the user for source/output directories, checks API keys,
- * shows a summary and asks for confirmation before running any migration.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { loadConfig, PROVIDERS } from "../utils/config-manager.js";
 
-// ── Inline readline helper ────────────────────────────────────────────────────
 
-/**
- * Wraps readline.question in a promise.
- * @param {import("node:readline").Interface} rl
- * @param {string} question
- * @returns {Promise<string>}
- */
+
+ 
 export function prompt(rl, question) {
     return new Promise((resolve) => {
         rl.question(question, (answer) => resolve(answer.trim()));
     });
 }
 
-// ── API key status display ────────────────────────────────────────────────────
 
-/**
- * Displays all configured AI providers and their key status.
- * Returns true if the active provider has a valid key (or is key-free like Ollama).
- * @returns {boolean}
- */
+
+ 
 export function checkApiKeys() {
     const config = loadConfig();
     const active = config.activeProvider;
@@ -103,13 +88,9 @@ export function checkApiKeys() {
     return activeHasKey;
 }
 
-// ── Path resolver ─────────────────────────────────────────────────────────────
 
-/**
- * Expands ~ and resolves an input path string.
- * @param {string} input
- * @returns {string|null}
- */
+
+ 
 export function resolveDir(input) {
     if (!input) return null;
     const home = process.env.HOME || process.env.USERPROFILE || "";
@@ -117,16 +98,9 @@ export function resolveDir(input) {
     return path.resolve(expanded);
 }
 
-// ── Pre-flight wizard ─────────────────────────────────────────────────────────
 
-/**
- * Interactive wizard run before migrate-project and start commands.
- * Steps: ask source dir → ask output dir → check API keys → confirm.
- *
- * @param {import("node:readline").Interface|null} _rl  Unused (kept for API compat)
- * @param {string} commandLabel  Name of the command being run (for display)
- * @returns {Promise<{ sourcePath: string, outputPath: string, confirmed: boolean }>}
- */
+
+ 
 export async function migrationWizard(_rl, commandLabel) {
     const { default: inquirer } = await
     import ("inquirer");
@@ -136,7 +110,7 @@ export async function migrationWizard(_rl, commandLabel) {
     console.log(chalk.dim("  " + "─".repeat(50)));
     console.log(chalk.dim("  Vou te guiar pelas configurações antes de iniciar.\n"));
 
-    // ── Step 1: Source directory ─────────────────────────────────────────────
+
     console.log(chalk.bold("  1. Diretório do projeto AngularJS (origem)"));
     console.log(chalk.dim("     Onde está o projeto que será migrado?"));
     console.log(
@@ -161,7 +135,7 @@ export async function migrationWizard(_rl, commandLabel) {
 
     const sourcePath = resolveDir(sourceAnswer);
 
-    // ── Step 2: Output directory ─────────────────────────────────────────────
+
     console.log();
     console.log(chalk.bold("  2. Diretório de saída (projeto Angular 21)"));
     console.log(chalk.dim("     Onde o projeto migrado será criado?"));
@@ -178,7 +152,7 @@ export async function migrationWizard(_rl, commandLabel) {
 
     const outputPath = resolveDir(outputAnswer);
 
-    // ── Step 3: API Keys check ────────────────────────────────────────────────
+
     console.log();
     console.log(chalk.bold("  3. Verificação de API Keys"));
     console.log(chalk.dim("  " + "─".repeat(50)));
@@ -204,7 +178,7 @@ export async function migrationWizard(_rl, commandLabel) {
         }
     }
 
-    // ── Step 4: Summary + confirm ─────────────────────────────────────────────
+
     console.log();
     console.log(chalk.bold.white("  Resumo da migração"));
     console.log(chalk.dim("  " + "─".repeat(50)));

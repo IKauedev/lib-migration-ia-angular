@@ -8,7 +8,7 @@ import { loadConfig } from "../utils/config-manager.js";
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
 import { dbg, dbgStep, dbgScan } from "../utils/debug.js";
 
-// ── Phase labels ──────────────────────────────────────────────────────────────
+
 
 const PHASE_NAMES = {
   1: "Services & Factories",
@@ -19,20 +19,20 @@ const PHASE_NAMES = {
   6: "Roteamento",
 };
 
-// ── Main entry point ──────────────────────────────────────────────────────────
+
 
 export async function startCommand(projectPath, opts) {
   const { default: inquirer } = await import("inquirer");
 
   const absPath = path.resolve(projectPath || ".");
 
-  // ── Validate path ──────────────────────────────────────────────────────────
+
   if (!fs.existsSync(absPath) || !fs.lstatSync(absPath).isDirectory()) {
     ui.error(`Pasta não encontrada: ${absPath}`);
     process.exit(1);
   }
 
-  // ── Validate AI config ─────────────────────────────────────────────────────
+
   const config = loadConfig();
   const activeCfg = config.providers[config.activeProvider];
   dbgStep(
@@ -65,7 +65,7 @@ export async function startCommand(projectPath, opts) {
   );
   ui.blank();
 
-  // ── Step 1: Scan ───────────────────────────────────────────────────────────
+
   const scanSpinner = ora(
     chalk.dim("Fase 1/4 — Escaneando projeto..."),
   ).start();
@@ -106,7 +106,7 @@ export async function startCommand(projectPath, opts) {
     if (!force) process.exit(0);
   }
 
-  // ── Step 2: Show analysis summary ─────────────────────────────────────────
+
   ui.blank();
   ui.section("Fase 2/4 — Plano de Migração");
 
@@ -149,7 +149,7 @@ export async function startCommand(projectPath, opts) {
     }
   }
 
-  // Top AngularJS patterns
+
   if (analysis.summary.topPatterns?.length) {
     ui.blank();
     console.log(chalk.bold("  Padrões AngularJS detectados:"));
@@ -164,7 +164,7 @@ export async function startCommand(projectPath, opts) {
 
   ui.blank();
 
-  // ── Step 3: Interactive options ────────────────────────────────────────────
+
   ui.section("Fase 3/4 — Configuração");
 
   const { outputMode } = await inquirer.prompt([
@@ -221,7 +221,7 @@ export async function startCommand(projectPath, opts) {
 
   ui.blank();
 
-  // ── Step 4: Confirmation ───────────────────────────────────────────────────
+
   const outputPreview =
     outputMode === "inplace"
       ? path.join(absPath, "src-angular21")
@@ -269,15 +269,15 @@ export async function startCommand(projectPath, opts) {
     process.exit(0);
   }
 
-  // Save the analysis now so migrate-project reuses it without re-scanning
+
   try {
     saveAnalysis(absPath, analysis);
     dbgStep("análise salva em .ng-migrate-analysis.json");
   } catch {
-    // non-fatal
+
   }
 
-  // ── Step 5: Delegate to migrate-project ───────────────────────────────────
+
   ui.blank();
   ui.section("Fase 4/4 — Migração em andamento");
 
@@ -297,7 +297,7 @@ export async function startCommand(projectPath, opts) {
   await migrateProjectCommand(absPath, migrateOpts);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 function complexityBadge(c) {
   if (c === "alta") return chalk.red("alta");

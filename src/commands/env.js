@@ -6,7 +6,7 @@ import {
 } from "../utils/env-loader.js";
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
 
-// Known variables with descriptions
+
 const KNOWN_VARS = {
   ANTHROPIC_API_KEY: {
     desc: "Chave da API Anthropic (Claude)",
@@ -36,7 +36,7 @@ const KNOWN_VARS = {
 };
 
 export async function envCommand(subCmd, args, opts) {
-  // ── Interactive wizard if no sub-command ───────────────────────────────────
+
   if (!subCmd) {
     await interactiveSetup();
     return;
@@ -81,7 +81,7 @@ export async function envCommand(subCmd, args, opts) {
   process.exit(1);
 }
 
-// ── Interactive setup wizard ──────────────────────────────────────────────────
+
 
 async function interactiveSetup() {
   const { default: inquirer } = await import("inquirer");
@@ -175,7 +175,7 @@ async function interactiveSetup() {
   printSeparator();
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 function setVar(key, value, { silent = false } = {}) {
   const vars = readEnvFile();

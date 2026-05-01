@@ -8,6 +8,11 @@ import cliProgress from "cli-progress";
 import { glob } from "glob";
 import { migrateWithAI } from "../utils/ai.js";
 import { parseMigrateResponse } from "../utils/parser.js";
+import {
+  ProjectMigrationContext,
+  CHECKPOINT_FILE_NAME,
+} from "../core/context/project-context.js";
+import { MigrationOrchestrator } from "../core/orchestrator.js";
 import { migrateDependencies } from "../utils/deps-migrator.js";
 import { buildReport, saveReport } from "../utils/report.js";
 import {
@@ -51,13 +56,9 @@ function shouldSkip(p) {
   return SKIP_PATTERNS.some((pat) => pat.test(p.replace(/\\/g, "/")));
 }
 
-// ── Main command ──────────────────────────────────────────────────────────────
-
 export async function migrateProjectCommand(projectPath, opts) {
-  // ── Check / install Angular CLI ────────────────────────────────────────────
   await ensureAngularCLI();
 
-  // ── Optional: clone repo before migrating ─────────────────────────────────
   let clonedTmpDir = null;
   if (opts.clone) {
     const repoUrl = opts.clone;
@@ -84,7 +85,7 @@ export async function migrateProjectCommand(projectPath, opts) {
       );
       process.exit(1);
     }
-    // Override projectPath to the cloned directory
+
     projectPath = clonedTmpDir;
   }
 
@@ -101,20 +102,20 @@ export async function migrateProjectCommand(projectPath, opts) {
 
   const projectName = path.basename(absPath);
 
-  // ── Resolve output strategy ────────────────────────────────────────────────
   const inPlace = !!opts.inPlace;
   let outputDir;
   let backupDir = null;
-  let scaffoldRoot; // where angular.json / tsconfig / package.json go
+  let scaffoldRoot;
 
   if (inPlace) {
     outputDir = path.join(absPath, "src-angular21");
     backupDir = path.join(absPath, "src-angularjs-backup");
-    scaffoldRoot = absPath; // scaffold files go to the project root
+    scaffoldRoot = absPath;
   } else {
-    outputDir = opts.output
+    const resolvedOutputDir = opts.output
       ? path.resolve(opts.output)
       : path.join(path.dirname(absPath), `${projectName}-angular21`);
+    outputDir = resolvedOutputDir;
     scaffoldRoot = outputDir;
   }
 
@@ -138,7 +139,6 @@ export async function migrateProjectCommand(projectPath, opts) {
   printKeyValue("Concorrência:", String(concurrency));
   ui.blank();
 
-  // ── Always scan before migrating ──────────────────────────────────────────
   ui.section("Fase 1/2 — Análise do Projeto");
   let analysis = null;
   const scanSpinner = ora(chalk.dim("Escaneando projeto AngularJS...")).start();
@@ -157,7 +157,6 @@ export async function migrateProjectCommand(projectPath, opts) {
     analysis = null;
   }
 
-  // Print scan summary
   if (analysis && analysis.summary) {
     const s = analysis.summary;
     ui.blank();
@@ -212,17 +211,72 @@ export async function migrateProjectCommand(projectPath, opts) {
   ui.blank();
   ui.section("Fase 2/2 — Migração");
 
-  // Load registry and deps graph for AI context
   const registry = loadRegistry(absPath);
   const depsGraph = loadDepsGraph(absPath);
 
+  const checkpointPath = path.join(absPath, CHECKPOINT_FILE_NAME);
+
+  const projectContext = new ProjectMigrationContext(absPath);
+  projectContext.initFromAnalysis(analysis, registry, depsGraph);
+  dbg(
+    chalk.dim(
+      `[context] pronto — ${projectContext.symbolMap.size} símbolos | ${projectContext.totalFiles} arquivos a migrar`,
+    ),
+  );
+
+  const orchestrator = new MigrationOrchestrator(absPath, absPath);
+  if (opts.fresh) {
+    orchestrator.clearCache();
+    dbg(chalk.dim("[orchestrator] cache apagado (--fresh)"));
+  }
+
+  const existingCheckpoint = !opts.fresh
+    ? ProjectMigrationContext.loadCheckpoint(checkpointPath)
+    : null;
+  let resumingFromCheckpoint = false;
+  let checkpointOutputDir = null;
+
+  if (existingCheckpoint && !opts.dryRun) {
+    const ago = _formatAgo(existingCheckpoint.savedAt);
+    ui.blank();
+    ui.warn(
+      `Checkpoint encontrado (salvo ${ago}):\n` +
+        chalk.dim(
+          `  ${existingCheckpoint.completedFiles}/${existingCheckpoint.totalFiles} arquivo(s) já migrado(s) | fase=${existingCheckpoint.currentPhase ?? "?"}`,
+        ),
+    );
+
+    const { default: inquirer } = await import("inquirer");
+    const { resume } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "resume",
+        message: "Deseja continuar de onde parou?",
+        default: true,
+      },
+    ]);
+
+    if (resume) {
+      projectContext.restoreFromCheckpoint(existingCheckpoint);
+      checkpointOutputDir = existingCheckpoint.outputDir;
+      resumingFromCheckpoint = true;
+      ui.success(
+        `Contexto restaurado: ${projectContext.completedFiles} arquivo(s) já concluídos.`,
+      );
+    } else {
+      try {
+        fs.unlinkSync(checkpointPath);
+      } catch {}
+      ui.info("Iniciando migração do zero.");
+    }
+    ui.blank();
+  }
+
   ui.blank();
 
-  // ── Build file list ────────────────────────────────────────────────────────
   let filesToMigrate = [];
 
   if (analysis && analysis.files && analysis.files.length) {
-    // Use phase-sorted order from analysis
     filesToMigrate = analysis.files
       .filter((f) => !shouldSkip(f.path))
       .map((f) => ({
@@ -255,7 +309,6 @@ export async function migrateProjectCommand(projectPath, opts) {
     return;
   }
 
-  // ── Apply glob filter ──────────────────────────────────────────────────────
   if (opts.only) {
     const regex = new RegExp(
       "^" +
@@ -272,13 +325,33 @@ export async function migrateProjectCommand(projectPath, opts) {
     }
   }
 
-  // ── Phase filter ───────────────────────────────────────────────────────────
   if (opts.phase) {
     const ph = parseInt(opts.phase, 10);
     filesToMigrate = filesToMigrate.filter((f) => f.phase === ph);
     ui.info(
       `Filtrando apenas Fase ${ph} (${filesToMigrate.length} arquivo(s))`,
     );
+  }
+
+  if (resumingFromCheckpoint && projectContext.migratedFiles.length > 0) {
+    const donePaths = new Set(
+      projectContext.migratedFiles.map((f) => f.originalPath),
+    );
+    const before = filesToMigrate.length;
+    filesToMigrate = filesToMigrate.filter((f) => !donePaths.has(f.path));
+    const skippedCount = before - filesToMigrate.length;
+    if (skippedCount > 0) {
+      ui.info(
+        chalk.dim(
+          `Retomando: ${skippedCount} arquivo(s) já migrado(s) serão ignorados.`,
+        ),
+      );
+    }
+
+    if (checkpointOutputDir && !opts.output) {
+      outputDir = checkpointOutputDir;
+      if (!inPlace) scaffoldRoot = outputDir;
+    }
   }
 
   printKeyValue("Arquivos para migrar:", String(filesToMigrate.length));
@@ -288,7 +361,6 @@ export async function migrateProjectCommand(projectPath, opts) {
   }
   ui.blank();
 
-  // ── Dry-run: just show list ────────────────────────────────────────────────
   if (opts.dryRun) {
     ui.section("Dry-run — arquivos que seriam migrados (por fase)");
     const phases = [...new Set(filesToMigrate.map((f) => f.phase))].sort();
@@ -321,7 +393,6 @@ export async function migrateProjectCommand(projectPath, opts) {
     return;
   }
 
-  // ── Scaffold base Angular 21 project via `ng new` (non-inPlace only) ────────
   if (!inPlace) {
     const slug = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     dbgDir("scaffolding", outputDir, `ng new "${slug}"`);
@@ -345,12 +416,10 @@ export async function migrateProjectCommand(projectPath, opts) {
       process.exit(1);
     }
   } else {
-    // in-place: apenas cria o diretório de saída dos arquivos migrados
     dbgDir("criando", outputDir, "diretório de saída (in-place)");
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  // ── In-place: backup original source files ────────────────────────────────
   if (inPlace && !opts.dryRun) {
     const backupSpinner = ora(
       chalk.dim("Fazendo backup dos arquivos originais..."),
@@ -377,8 +446,6 @@ export async function migrateProjectCommand(projectPath, opts) {
     }
   }
 
-  // ── Progress bar ───────────────────────────────────────────────────────────
-  // In debug mode the bar is replaced by per-file log lines
   const useBar = !isDebug();
   const bar = useBar
     ? new cliProgress.SingleBar(
@@ -414,8 +481,33 @@ export async function migrateProjectCommand(projectPath, opts) {
   const errors = [];
   const limit = pLimit(concurrency);
   let completed = 0;
+  let currentPhase = 0;
 
-  // ── Process phase by phase (parallel within same phase) ───────────────────
+  let sigintSaved = false;
+  const onInterrupt = () => {
+    if (sigintSaved) return;
+    sigintSaved = true;
+    bar.stop();
+    console.log("\n");
+    ui.warn(
+      "Interrompido — salvando checkpoint e cache para retomar depois...",
+    );
+    projectContext.saveCheckpoint(checkpointPath, {
+      outputDir,
+      currentPhase,
+      errors,
+      stats,
+    });
+    orchestrator.saveCache();
+    ui.info(`Checkpoint: ${chalk.cyan(checkpointPath)}`);
+    ui.info(
+      `Retome com: ${chalk.cyan("ng-migrate migrate-project " + projectPath)}`,
+    );
+    process.exit(130);
+  };
+  process.once("SIGINT", onInterrupt);
+  process.once("SIGTERM", onInterrupt);
+
   const phases = [...new Set(filesToMigrate.map((f) => f.phase))].sort();
   const phaseNames = [
     "",
@@ -428,8 +520,15 @@ export async function migrateProjectCommand(projectPath, opts) {
   ];
 
   for (const phase of phases) {
+    currentPhase = phase;
     const phaseFiles = filesToMigrate.filter((f) => f.phase === phase);
     dbgPhase(phase, phaseNames[phase] || `Fase ${phase}`, phaseFiles.length);
+
+    const phaseContexts = orchestrator.warmPhaseContexts(
+      phaseFiles,
+      depsGraph,
+      projectContext,
+    );
 
     await Promise.all(
       phaseFiles.map((fileInfo) =>
@@ -442,6 +541,8 @@ export async function migrateProjectCommand(projectPath, opts) {
             fileInfo.path,
             `fase=${phase} | complexidade=${fileInfo.complexity}`,
           );
+
+          let code;
           try {
             code = fs.readFileSync(fileInfo.absPath, "utf-8");
           } catch {
@@ -452,35 +553,98 @@ export async function migrateProjectCommand(projectPath, opts) {
             return;
           }
 
-          let raw;
-          try {
-            // Build context hint from registry (rename map + direct dependencies)
-            let contexto = "";
-            if (registry?.renameMap) {
-              const fileDeps = depsGraph?.graph?.[fileInfo.path]?.injects || [];
-              const relevantRenames = fileDeps
-                .filter((d) => registry.renameMap[d])
-                .map((d) => `${d} → ${registry.renameMap[d]}`);
-              if (relevantRenames.length > 0) {
-                contexto = `Dependências injetadas neste arquivo (use os nomes Angular sugeridos):\n${relevantRenames.join("\n")}`;
-              }
-              // Also add the file's own registered name
-              const ownSymbol = registry.symbols?.find(
-                (s) => s.file === fileInfo.path,
-              );
-              if (ownSymbol) {
-                contexto += `\nEste arquivo registra: ${ownSymbol.angularName} → renomear para ${ownSymbol.suggestedClassName}`;
-              }
+          const cached = orchestrator.getCached(fileInfo.path, code);
+          if (cached) {
+            const result = cached;
+            const migratedCode = result.codigoMigrado || code;
+            const outRelPath = fileInfo.path.replace(/\.js$/, ".ts");
+            const outPath = path.join(outputDir, outRelPath);
+            try {
+              fs.mkdirSync(path.dirname(outPath), { recursive: true });
+              fs.writeFileSync(outPath, migratedCode, "utf-8");
+              projectContext.recordMigration(fileInfo, migratedCode, result);
+              stats.success++;
+              stats.files.push({
+                path: fileInfo.path,
+                tipo: result.tipo || fileInfo.type,
+                error: null,
+              });
+            } catch (writeErr) {
+              stats.errors++;
+              errors.push({
+                file: fileInfo.path,
+                message: `Erro de escrita: ${writeErr.message}`,
+              });
+              stats.files.push({
+                path: fileInfo.path,
+                tipo: fileInfo.type,
+                error: `Erro de escrita: ${writeErr.message}`,
+              });
             }
-            raw = await migrateWithAI(code, fileInfo.type || "auto", contexto);
-          } catch (err) {
-            dbg(chalk.red(`  erro em ${fileInfo.path}: ${err.message}`));
+            completed++;
+            bar.update(completed, { filename: fileInfo.path });
+            return;
+          }
+
+          const { tier, maxTokens } = orchestrator.resolveModelConfig(
+            fileInfo,
+            code,
+          );
+
+          const MAX_OUTER_RETRIES = 2;
+          let raw = null;
+          let lastErr = null;
+
+          for (let attempt = 0; attempt <= MAX_OUTER_RETRIES; attempt++) {
+            if (attempt > 0) {
+              const delay = 5000 * attempt;
+              dbg(
+                chalk.yellow(
+                  `  [retry ${attempt}/${MAX_OUTER_RETRIES}] ${fileInfo.path} — aguardando ${delay / 1000}s...`,
+                ),
+              );
+              await _sleep(delay);
+            }
+            try {
+              const contexto = phaseContexts.get(fileInfo.path) ?? "";
+              raw = await migrateWithAI(
+                code,
+                fileInfo.type || "auto",
+                contexto,
+                projectContext,
+                { tier, maxTokens },
+              );
+              lastErr = null;
+              break;
+            } catch (err) {
+              lastErr = err;
+              dbg(
+                chalk.red(
+                  `  [tentativa ${attempt + 1}] erro em ${fileInfo.path}: ${err.message}`,
+                ),
+              );
+            }
+          }
+
+          if (lastErr) {
+            dbg(
+              chalk.red(
+                `  falha definitiva em ${fileInfo.path}: ${lastErr.message}`,
+              ),
+            );
             stats.errors++;
-            errors.push({ file: fileInfo.path, message: err.message });
+            errors.push({ file: fileInfo.path, message: lastErr.message });
             stats.files.push({
               path: fileInfo.path,
               tipo: fileInfo.type,
-              error: err.message,
+              error: lastErr.message,
+            });
+
+            projectContext.saveCheckpoint(checkpointPath, {
+              outputDir,
+              currentPhase: phase,
+              errors,
+              stats,
             });
             completed++;
             bar.update(completed, { filename: fileInfo.path });
@@ -488,9 +652,8 @@ export async function migrateProjectCommand(projectPath, opts) {
           }
 
           const result = parseMigrateResponse(raw);
-          const migratedCode = result.codigoMigrado || code; // fallback to original if parse failed
+          const migratedCode = result.codigoMigrado || code;
 
-          // Determine output path (convert .js → .ts when content is TypeScript)
           const outRelPath = fileInfo.path.replace(/\.js$/, ".ts");
           const outPath = path.join(outputDir, outRelPath);
           try {
@@ -522,6 +685,10 @@ export async function migrateProjectCommand(projectPath, opts) {
             `tipo=${result.tipo || "auto"} | ${migratedCode.length} chars`,
           );
 
+          orchestrator.setCached(fileInfo.path, code, result);
+
+          projectContext.recordMigration(fileInfo, migratedCode, result);
+
           stats.success++;
           stats.files.push({
             path: fileInfo.path,
@@ -533,12 +700,30 @@ export async function migrateProjectCommand(projectPath, opts) {
         }),
       ),
     );
+
+    if (projectContext.completedFiles > 0) {
+      dbg(chalk.dim(`[context] condensando histórico após fase ${phase}...`));
+      await projectContext.condenseHistoryWithAI().catch(() => {});
+      projectContext.saveCheckpoint(checkpointPath, {
+        outputDir,
+        currentPhase: phase,
+        errors,
+        stats,
+      });
+      orchestrator.saveCache();
+    }
   }
+
+  process.off("SIGINT", onInterrupt);
+  process.off("SIGTERM", onInterrupt);
+  orchestrator.saveCache();
+  try {
+    if (fs.existsSync(checkpointPath)) fs.unlinkSync(checkpointPath);
+  } catch {}
 
   bar.stop();
   ui.blank();
 
-  // ── Migrate package.json ───────────────────────────────────────────────────
   let depReport = null;
   if (!opts.skipDeps) {
     const srcPkg = path.join(absPath, "package.json");
@@ -553,7 +738,7 @@ export async function migrateProjectCommand(projectPath, opts) {
         const original = fs.readFileSync(srcPkg, "utf-8");
         const result = migrateDependencies(original);
         depReport = result.report;
-        // In-place: overwrite in project root; otherwise write to outputDir
+
         fs.writeFileSync(
           path.join(scaffoldRoot, "package.json"),
           result.content,
@@ -568,16 +753,12 @@ export async function migrateProjectCommand(projectPath, opts) {
     }
   }
 
-  // ── Copy non-AngularJS assets (tsconfig, angular.json template, etc.) ─────
   copyStaticAssets(absPath, scaffoldRoot);
 
-  // ── Generate angular.json scaffold if not present ─────────────────────────
   generateAngularJson(scaffoldRoot, projectName);
 
-  // ── Generate tsconfig.json if not present ────────────────────────────────
   generateTsConfig(scaffoldRoot);
 
-  // ── Build and save report ──────────────────────────────────────────────────
   const reportContent = buildReport({
     repoName: projectName,
     provider: "local",
@@ -589,17 +770,17 @@ export async function migrateProjectCommand(projectPath, opts) {
   });
   const reportPath = saveReport(outputDir, projectName, reportContent);
 
-  // ── Update analysis file with migration timestamp ─────────────────────────
   if (analysis) {
     analysis.lastMigration = {
       migratedAt: new Date().toISOString(),
       outputDir,
       stats: { success: stats.success, errors: stats.errors },
+
+      contextSnapshot: projectContext.getSnapshot(),
     };
     saveAnalysis(absPath, analysis);
   }
 
-  // ── Print results ──────────────────────────────────────────────────────────
   ui.section("Resultado da Migração");
   printKeyValue("Total de arquivos:", String(stats.total));
   printKeyValue("Migrados com sucesso:", chalk.green(String(stats.success)));
@@ -608,6 +789,21 @@ export async function migrateProjectCommand(projectPath, opts) {
     "Erros:",
     stats.errors > 0 ? chalk.red(String(stats.errors)) : chalk.dim("0"),
   );
+
+  const orchStats = orchestrator.getStats();
+  if (orchStats.cacheHits > 0 || stats.total > 1) {
+    ui.blank();
+    printKeyValue(
+      "Cache hits (sem IA):",
+      chalk.dim(String(orchStats.cacheHits)),
+    );
+    printKeyValue(
+      "Tier FAST / STANDARD / PREMIUM:",
+      chalk.dim(
+        `${orchStats.fast ?? 0} / ${orchStats.standard ?? 0} / ${orchStats.premium ?? 0}`,
+      ),
+    );
+  }
 
   if (errors.length > 0) {
     ui.blank();
@@ -631,7 +827,6 @@ export async function migrateProjectCommand(projectPath, opts) {
   ui.info(`Relatório: ${chalk.cyan(reportPath)}`);
   ui.blank();
 
-  // ── Auto npm install ───────────────────────────────────────────────────────
   const installDir = inPlace ? absPath : outputDir;
   if (!opts.skipInstall && !opts.dryRun) {
     const installSpinner = ora(
@@ -666,8 +861,6 @@ export async function migrateProjectCommand(projectPath, opts) {
   printSeparator();
 }
 
-// ── Scaffold helpers ──────────────────────────────────────────────────────────
-
 function copyStaticAssets(srcDir, outputDir) {
   const COPY_FILES = [
     "tsconfig.base.json",
@@ -680,9 +873,7 @@ function copyStaticAssets(srcDir, outputDir) {
     if (fs.existsSync(src)) {
       try {
         fs.copyFileSync(src, path.join(outputDir, f));
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
   }
 }
@@ -764,9 +955,7 @@ function generateAngularJson(outputDir, projectName) {
       JSON.stringify(angularJson, null, 2),
       "utf-8",
     );
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
 
 function generateTsConfig(outputDir) {
@@ -802,7 +991,23 @@ function generateTsConfig(outputDir) {
 
   try {
     fs.writeFileSync(tsConfigPath, JSON.stringify(tsConfig, null, 2), "utf-8");
+  } catch {}
+}
+
+function _sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function _formatAgo(isoDate) {
+  try {
+    const diff = Date.now() - new Date(isoDate).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return "agora mesmo";
+    if (mins < 60) return `${mins} min atrás`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h atrás`;
+    return `${Math.floor(hours / 24)}d atrás`;
   } catch {
-    /* ignore */
+    return "data desconhecida";
   }
 }

@@ -1,12 +1,6 @@
 import { spawn } from "child_process";
 import readline from "readline";
-/**
- * Executa um comando exibindo em tempo real (estilo Open Claude)
- * Mostra o comando, saída progressiva e feedback visual.
- * @param {string} command Comando a executar (ex: 'npm install')
- * @param {object} [opts] Opções: { cwd, env, prefix }
- * @returns {Promise<number>} Código de saída
- */
+ 
 export async function runCommandLive(command, opts = {}) {
     const { cwd, env, prefix = "  $" } = opts;
     ui.blank();
@@ -64,7 +58,7 @@ export function printBanner() {
 }
 
 function printQuickTips() {
-    // Status do ambiente
+
     printEnvStatus();
 
     console.log(chalk.dim("  Comandos rápidos:"));

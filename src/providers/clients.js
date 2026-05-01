@@ -1,29 +1,17 @@
-/**
- * AI provider client builders.
- * Each function lazily imports the required SDK and returns an initialised client.
- */
-
-/**
- * @param {{ apiKey: string }} cfg
- */
 export async function buildAnthropicClient(cfg) {
     const { default: Anthropic } = await
     import ("@anthropic-ai/sdk");
     return new Anthropic({ apiKey: cfg.apiKey });
 }
 
-/**
- * @param {{ apiKey: string }} cfg
- */
+ 
 export async function buildOpenAIClient(cfg) {
     const { default: OpenAI } = await
     import ("openai");
     return new OpenAI({ apiKey: cfg.apiKey });
 }
 
-/**
- * @param {{ apiKey: string, endpoint: string, deployment: string, apiVersion?: string }} cfg
- */
+ 
 export async function buildAzureOpenAIClient(cfg) {
     const { default: OpenAI } = await
     import ("openai");
@@ -35,9 +23,7 @@ export async function buildAzureOpenAIClient(cfg) {
     });
 }
 
-/**
- * @param {{ apiKey?: string, endpoint: string }} cfg
- */
+ 
 export async function buildOpenAICompatibleClient(cfg) {
     const { default: OpenAI } = await
     import ("openai");
@@ -47,9 +33,7 @@ export async function buildOpenAICompatibleClient(cfg) {
     });
 }
 
-/**
- * @param {{ apiKey: string }} cfg
- */
+ 
 export async function buildOpenRouterClient(cfg) {
     const { default: OpenAI } = await
     import ("openai");
@@ -63,9 +47,7 @@ export async function buildOpenRouterClient(cfg) {
     });
 }
 
-/**
- * @param {{ endpoint?: string }} cfg
- */
+ 
 export async function buildOllamaClient(cfg) {
     const { default: OpenAI } = await
     import ("openai");
@@ -75,9 +57,7 @@ export async function buildOllamaClient(cfg) {
     });
 }
 
-/**
- * @param {{ apiKey: string }} cfg
- */
+ 
 export async function buildGeminiClient(cfg) {
     const { GoogleGenerativeAI } = await
     import ("@google/generative-ai");

@@ -1,8 +1,3 @@
-/**
- * Command dispatcher.
- * Routes tokenized CLI input to the appropriate command handler.
- */
-
 import chalk from "chalk";
 import { parseOpts } from "./tokenizer.js";
 import { migrationWizard } from "./wizard.js";
@@ -19,7 +14,7 @@ import { scanCommand } from "../commands/scan.js";
 import { configCommand } from "../commands/config.js";
 import { envCommand } from "../commands/env.js";
 
-// ── Help ──────────────────────────────────────────────────────────────────────
+
 
 export function showInteractiveHelp() {
   console.log();
@@ -51,12 +46,9 @@ export function showInteractiveHelp() {
   console.log();
 }
 
-// ── Pre-flight check ──────────────────────────────────────────────────────────
 
-/**
- * Verifies that the AI provider is fully configured before running a migration.
- * Prints errors and returns false if not ready.
- */
+
+ 
 function preflightCheck() {
   const result = assertReadyToMigrate();
   if (result.ok) {
@@ -86,13 +78,9 @@ function preflightCheck() {
   return false;
 }
 
-// ── Dispatcher ────────────────────────────────────────────────────────────────
 
-/**
- * Routes a tokenized command to its handler.
- * @param {string[]} tokens
- * @param {import("node:readline").Interface|null} rl
- */
+
+ 
 export async function dispatch(tokens, rl) {
   if (!tokens.length) return;
 

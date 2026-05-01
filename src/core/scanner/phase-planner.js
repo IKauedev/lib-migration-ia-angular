@@ -1,9 +1,3 @@
-/**
- * Migration phase planner.
- * Maps AngularJS file types to migration phases and estimates work hours.
- */
-
-/** Maps AngularJS file types to their migration phase number (1–6). */
 const PHASE_MAP = {
     factory: 1,
     service: 1,
@@ -17,7 +11,7 @@ const PHASE_MAP = {
     unknown: 4,
 };
 
-/** Human-readable phase names indexed by phase number. */
+ 
 export const PHASE_NAMES = [
     "",
     "Services & Factories",
@@ -28,21 +22,12 @@ export const PHASE_NAMES = [
     "Roteamento & Módulos",
 ];
 
-/**
- * Returns the migration phase number for a given AngularJS file type.
- * @param {string} type
- * @returns {number}
- */
+ 
 export function getMigrationPhase(type) {
     return PHASE_MAP[type] !== undefined ? PHASE_MAP[type] : 4;
 }
 
-/**
- * Estimates migration effort in hours based on complexity and lines of code.
- * @param {"baixa"|"média"|"alta"} complexity
- * @param {number} loc
- * @returns {number}
- */
+ 
 export function estimateHours(complexity, loc) {
     const base =
         complexity === "alta" ? 3.5 : complexity === "média" ? 1.5 : 0.5;

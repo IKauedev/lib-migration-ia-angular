@@ -1,19 +1,3 @@
-/**
- * Interactive shell — persistent readline loop (Open Claude style).
- * Stays running after each command, prompting for the next.
- *
- * Features:
- *  - Persistent history across sessions (~/.ng-migrate/.shell_history)
- *  - ↑↓ history navigation built into readline
- *  - Command aliases (s=scan, m=migrate, mp=migrate-project, …)
- *  - Active provider/model shown in welcome header
- *  - Detected AngularJS project shown in welcome header
- *  - ? or help shows a compact shortcuts panel
- *  - Ctrl+C clears the current line without exiting
- *  - Tab-completes commands AND .js/.ts/.html files after "migrate"
- *  - --quiet / -q mode suppresses all decorative output
- */
-
 import readline from "node:readline";
 import fs from "node:fs";
 import path from "node:path";
@@ -23,14 +7,14 @@ import { tokenize } from "./tokenizer.js";
 import { dispatch } from "./dispatcher.js";
 import { loadConfig } from "../utils/config-manager.js";
 
-// ── Config ────────────────────────────────────────────────────────────────────
+
 
 const CONFIG_DIR = path.join(os.homedir(), ".ng-migrate");
 const HISTORY_FILE = path.join(CONFIG_DIR, ".shell_history");
 const MAX_HISTORY = 500;
 const QUIET = process.argv.includes("--quiet") || process.argv.includes("-q");
 
-// ── Aliases ───────────────────────────────────────────────────────────────────
+
 
 const ALIASES = {
   s: "scan",
@@ -46,7 +30,7 @@ const ALIASES = {
   q: "exit",
 };
 
-// ── Tab-completion ────────────────────────────────────────────────────────────
+
 
 const SHELL_COMMANDS = [
   "config",
@@ -62,12 +46,12 @@ const SHELL_COMMANDS = [
   "help",
   "exit",
   "sair",
-  // aliases
+
   ...Object.keys(ALIASES),
 ];
 
 function shellCompleter(line) {
-  // After "migrate <partial>" or "m <partial>" → suggest matching JS/TS/HTML files
+
   const migrateMatch = line.match(/^(migrate|m)\s+(.*)$/);
   if (migrateMatch) {
     const prefix = migrateMatch[1];
@@ -96,7 +80,7 @@ function shellCompleter(line) {
   return [hits.length ? hits : SHELL_COMMANDS, line];
 }
 
-// ── Persistent history ────────────────────────────────────────────────────────
+
 
 function loadHistory() {
   try {
@@ -104,7 +88,7 @@ function loadHistory() {
       return fs.readFileSync(HISTORY_FILE, "utf-8").split("\n").filter(Boolean);
     }
   } catch {
-    /* ignore */
+     
   }
   return [];
 }
@@ -113,26 +97,22 @@ function appendHistory(cmd) {
   try {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
     const history = loadHistory();
-    // Avoid consecutive duplicates
+
     if (history[history.length - 1] === cmd) return;
     history.push(cmd);
     const trimmed =
       history.length > MAX_HISTORY ? history.slice(-MAX_HISTORY) : history;
     fs.writeFileSync(HISTORY_FILE, trimmed.join("\n") + "\n", "utf-8");
   } catch {
-    /* ignore */
+     
   }
 }
 
-// ── Prompt ────────────────────────────────────────────────────────────────────
+
 
 const PROMPT = chalk.bold.green("> ");
 
-/**
- * Renders the hint line then the "> " prompt below it.
- * Hint is printed as a plain line above the input — no ANSI cursor tricks
- * that could conflict with readline's own cursor management.
- */
+ 
 function showPrompt(rl) {
   if (!QUIET) {
     process.stdout.write(chalk.dim("  ? for shortcuts\n"));
@@ -141,7 +121,7 @@ function showPrompt(rl) {
   rl.prompt();
 }
 
-// ── Shortcuts panel ───────────────────────────────────────────────────────────
+
 
 function printShortcuts() {
   console.log();
@@ -185,7 +165,7 @@ function printShortcuts() {
   console.log();
 }
 
-// ── Detect local AngularJS project ────────────────────────────────────────────
+
 
 function detectProject() {
   try {
@@ -195,12 +175,12 @@ function detectProject() {
       return data.projectName || data.name || path.basename(process.cwd());
     }
   } catch {
-    /* ignore */
+     
   }
   return null;
 }
 
-// ── Active provider info ──────────────────────────────────────────────────────
+
 
 function getProviderInfo() {
   try {
@@ -209,12 +189,12 @@ function getProviderInfo() {
     const model = config.providers?.[provider]?.model || "";
     return { provider, model };
   } catch {
-    /* ignore */
+     
   }
   return null;
 }
 
-// ── Welcome message ───────────────────────────────────────────────────────────
+
 
 function printShellWelcome() {
   if (QUIET) return;
@@ -227,7 +207,7 @@ function printShellWelcome() {
       argv1.endsWith("ng-migrate") ||
       argv1.endsWith("ng-migrate.cmd"));
 
-  // Active provider / model
+
   const provInfo = getProviderInfo();
   if (provInfo) {
     const label = provInfo.model
@@ -236,7 +216,7 @@ function printShellWelcome() {
     console.log(chalk.dim("  ● ") + chalk.dim(label));
   }
 
-  // Detected project
+
   const project = detectProject();
   if (project) {
     console.log(
@@ -257,7 +237,7 @@ function printShellWelcome() {
   }
 }
 
-// ── Resolve alias ─────────────────────────────────────────────────────────────
+
 
 function resolveAlias(input) {
   const firstWord = input.split(/\s+/)[0];
@@ -267,13 +247,9 @@ function resolveAlias(input) {
   return input;
 }
 
-// ── Main shell loop ───────────────────────────────────────────────────────────
 
-/**
- * Starts the persistent interactive shell.
- * Exits only on "exit" / "sair" / Ctrl+D.
- * Ctrl+C clears the current input line without exiting.
- */
+
+ 
 export async function interactiveShell() {
   printShellWelcome();
 
@@ -290,7 +266,7 @@ export async function interactiveShell() {
 
   showPrompt(rl);
 
-  // Ctrl+C → clear line, do NOT exit
+
   rl.on("SIGINT", () => {
     process.stdout.write("\r\x1b[2K");
     if (!QUIET) console.log(chalk.dim("  (use 'exit' ou 'q' para sair)"));
@@ -305,17 +281,17 @@ export async function interactiveShell() {
       return;
     }
 
-    // ── Shortcuts panel ───────────────────────────────────────────────────────
+
     if (["?", "help", "ajuda", "h"].includes(trimmed.toLowerCase())) {
       printShortcuts();
       showPrompt(rl);
       return;
     }
 
-    // ── Resolve alias ─────────────────────────────────────────────────────────
+
     const resolved = resolveAlias(trimmed);
 
-    // ── Exit ──────────────────────────────────────────────────────────────────
+
     if (
       ["exit", "quit", "sair"].includes(resolved.split(/\s+/)[0].toLowerCase())
     ) {
@@ -330,17 +306,17 @@ export async function interactiveShell() {
       process.exit(0);
     }
 
-    // ── Save to history ───────────────────────────────────────────────────────
+
     appendHistory(trimmed);
 
-    // ── Command separator ─────────────────────────────────────────────────────
+
     if (!QUIET) {
       console.log();
       console.log(chalk.dim("  " + "─".repeat(40)));
       console.log();
     }
 
-    // ── Execute ───────────────────────────────────────────────────────────────
+
     const t0 = Date.now();
     rl.pause();
 
@@ -369,5 +345,5 @@ export async function interactiveShell() {
   });
 }
 
-// Re-export for use in Commander's default action
+
 export { showInteractiveHelp } from "./dispatcher.js";

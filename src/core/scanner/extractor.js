@@ -1,15 +1,3 @@
-/**
- * AngularJS symbol, module, route, and dependency-graph extractor.
- */
-
-// ── Naming convention ─────────────────────────────────────────────────────────
-
-/**
- * Converts an AngularJS camelCase/dot name to a PascalCase Angular class name.
- * e.g. "myUserService" → "MyUserService", "app.main" → "AppMain"
- * @param {string} name
- * @returns {string}
- */
 export function toPascalCase(name) {
     return name
         .replace(/[.\-_/]/g, " ")
@@ -18,18 +6,13 @@ export function toPascalCase(name) {
         .join("");
 }
 
-// ── Module info ───────────────────────────────────────────────────────────────
 
-/**
- * Extracts all angular.module() declarations and references from source.
- * @param {string} content
- * @param {string} relPath
- * @returns {Array<{ moduleName: string, deps: string[], definedIn: string, referenceOnly?: boolean }>}
- */
+
+ 
 export function extractModuleInfo(content, relPath) {
     const modules = [];
 
-    // angular.module('name', [...deps]) — definition
+
     for (const m of content.matchAll(
             /angular\.module\s*\(\s*['"]([^'"]+)['"]\s*,\s*\[([^\]]*)\]/g,
         )) {
@@ -39,7 +22,7 @@ export function extractModuleInfo(content, relPath) {
         modules.push({ moduleName, deps, definedIn: relPath });
     }
 
-    // angular.module('name') — reference (no deps array)
+
     for (const m of content.matchAll(
             /angular\.module\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
         )) {
@@ -56,15 +39,9 @@ export function extractModuleInfo(content, relPath) {
     return modules;
 }
 
-// ── Symbol extraction ─────────────────────────────────────────────────────────
 
-/**
- * Extracts named AngularJS symbols (.controller, .service, .factory, etc.)
- * and suggests Angular 21 class names for each.
- * @param {string} content
- * @param {string} relPath
- * @returns {Array<{ kind: string, angularName: string, suggestedClassName: string, file: string }>}
- */
+
+ 
 export function extractSymbols(content, relPath) {
     const symbols = [];
     const kindMap = {
@@ -90,18 +67,13 @@ export function extractSymbols(content, relPath) {
     return symbols;
 }
 
-// ── Route extraction ──────────────────────────────────────────────────────────
 
-/**
- * Extracts route definitions from $routeProvider and $stateProvider.
- * @param {string} content
- * @param {string} relPath
- * @returns {Array<object>}
- */
+
+ 
 export function extractRoutes(content, relPath) {
     const routes = [];
 
-    // $routeProvider.when('/path', { controller: 'X', templateUrl: 'y.html' })
+
     for (const m of content.matchAll(
             /\.when\s*\(\s*['"]([^'"]+)['"]\s*,\s*\{([^}]+)\}/g,
         )) {
@@ -118,7 +90,7 @@ export function extractRoutes(content, relPath) {
         });
     }
 
-    // $stateProvider.state('name', { url: '...', controller: '...', templateUrl: '...' })
+
     for (const m of content.matchAll(
             /\.state\s*\(\s*['"]([^'"]+)['"]\s*,\s*\{([^}]+)\}/g,
         )) {
@@ -140,16 +112,11 @@ export function extractRoutes(content, relPath) {
     return routes;
 }
 
-// ── Dependency graph ──────────────────────────────────────────────────────────
 
-/**
- * Builds a file-level dependency graph from scan results and a symbol registry.
- * @param {Array<object>} fileResults
- * @param {{ symbols: Array<{ angularName: string, file: string }> }} symbolRegistry
- * @returns {Record<string, object>}
- */
+
+ 
 export function buildDepsGraph(fileResults, symbolRegistry) {
-    // Build lookup: angularName → file
+
     const symbolToFile = {};
     for (const sym of symbolRegistry.symbols) {
         symbolToFile[sym.angularName] = sym.file;

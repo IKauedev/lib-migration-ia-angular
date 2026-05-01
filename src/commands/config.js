@@ -9,13 +9,13 @@ import {
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
 
 export async function configCommand(opts) {
-  // ── Show current config ─────────────────────────────────────────────────────
+
   if (opts.show) {
     showCurrentConfig();
     return;
   }
 
-  // ── Reset ───────────────────────────────────────────────────────────────────
+
   if (opts.reset) {
     const { default: inquirer } = await import("inquirer");
     const { confirm } = await inquirer.prompt([
@@ -37,7 +37,7 @@ export async function configCommand(opts) {
     return;
   }
 
-  // ── Per-task model configuration ───────────────────────────────────────────────
+
   if (opts.taskModel) {
     await configureTaskModels();
     return;
@@ -49,7 +49,7 @@ export async function configCommand(opts) {
   const { default: inquirer } = await import("inquirer");
   const config = loadConfig();
 
-  // Step 1 — Choose provider
+
   const { providerKey } = await inquirer.prompt([
     {
       type: "list",
@@ -66,7 +66,7 @@ export async function configCommand(opts) {
   const current = config.providers[providerKey] || {};
   const questions = [];
 
-  // Step 2 — API key (skip for providers that don't need one)
+
   if (!provider.noKeyRequired) {
     questions.push({
       type: "password",
@@ -77,7 +77,7 @@ export async function configCommand(opts) {
     });
   }
 
-  // OpenRouter: tip about where to get the key
+
   if (providerKey === "openrouter" && !current.apiKey) {
     console.log();
     console.log(
@@ -87,7 +87,7 @@ export async function configCommand(opts) {
     console.log();
   }
 
-  // Step 3 — Provider-specific fields
+
   if (providerKey === "azure-openai") {
     questions.push(
       {
@@ -171,7 +171,7 @@ export async function configCommand(opts) {
     });
   }
 
-  // Step 4 — Set as active
+
   questions.push({
     type: "confirm",
     name: "setActive",
@@ -181,7 +181,7 @@ export async function configCommand(opts) {
 
   const answers = await inquirer.prompt(questions);
 
-  // Persist — do NOT store the masked placeholder if user left it unchanged
+
   if (!config.providers[providerKey]) config.providers[providerKey] = {};
   const p = config.providers[providerKey];
 
@@ -205,7 +205,7 @@ export async function configCommand(opts) {
   printSeparator();
 }
 
-// ── Show helper ───────────────────────────────────────────────────────────────
+
 
 function showCurrentConfig() {
   const config = loadConfig();
@@ -242,7 +242,7 @@ function showCurrentConfig() {
     chalk.dim("  Execute ng-migrate config para adicionar/alterar provedores."),
   );
 
-  // Per-task model overrides
+
   const taskModels = config.taskModels || {};
   if (Object.keys(taskModels).length > 0) {
     ui.blank();
@@ -271,7 +271,7 @@ function showCurrentConfig() {
   printSeparator();
 }
 
-// ── Per-task model wizard ─────────────────────────────────────────────────────
+
 
 async function configureTaskModels() {
   const { default: inquirer } = await import("inquirer");
@@ -309,7 +309,7 @@ async function configureTaskModels() {
     ]);
 
     if (!provider) {
-      // Clear override — use active provider
+
       delete taskModels[taskKey];
       console.log(chalk.dim("    → usando provedor ativo\n"));
       continue;

@@ -1,5 +1,5 @@
 export function parseMigrateResponse(input) {
-  // LangChain structured output already returns a typed object — pass through
+
   if (typeof input === "object" && input !== null) {
     return {
       tipo: input.tipo || "",
@@ -12,7 +12,7 @@ export function parseMigrateResponse(input) {
     };
   }
 
-  // Legacy fallback: parse raw text response (regex-based)
+
   const result = {
     tipo: "",
     padroes: [],
@@ -25,11 +25,11 @@ export function parseMigrateResponse(input) {
 
   const text = input;
 
-  // Tipo
+
   const tipoMatch = text.match(/TIPO:\s*(.+)/i);
   if (tipoMatch) result.tipo = tipoMatch[1].trim();
 
-  // Padrões detectados
+
   const padroesMatch = text.match(
     /PADRÕES_DETECTADOS:\n([\s\S]*?)(?=\nCÓDIGO_ORIGINAL:|$)/i,
   );
@@ -40,19 +40,19 @@ export function parseMigrateResponse(input) {
       .filter(Boolean);
   }
 
-  // Código original
+
   const origMatch = text.match(
     /CÓDIGO_ORIGINAL:\n```(?:javascript|js|typescript|ts)?\n([\s\S]*?)```/i,
   );
   if (origMatch) result.codigoOriginal = origMatch[1].trim();
 
-  // Código migrado
+
   const migMatch = text.match(
     /CÓDIGO_MIGRADO:\n```(?:javascript|js|typescript|ts)?\n([\s\S]*?)```/i,
   );
   if (migMatch) result.codigoMigrado = migMatch[1].trim();
 
-  // Mudanças
+
   const mudancasMatch = text.match(/MUDANÇAS:\n([\s\S]*?)(?=\nNOTAS:|$)/i);
   if (mudancasMatch) {
     result.mudancas = mudancasMatch[1]
@@ -61,7 +61,7 @@ export function parseMigrateResponse(input) {
       .filter(Boolean);
   }
 
-  // Notas
+
   const notasMatch = text.match(/NOTAS:\n?([\s\S]*?)$/i);
   if (notasMatch) result.notas = notasMatch[1].trim();
 
@@ -69,7 +69,7 @@ export function parseMigrateResponse(input) {
 }
 
 export function parseAnalyzeResponse(input) {
-  // LangChain structured output already returns a typed object — pass through
+
   if (typeof input === "object" && input !== null) {
     return {
       complexidade: input.complexidade || "",
@@ -82,7 +82,7 @@ export function parseAnalyzeResponse(input) {
     };
   }
 
-  // Legacy fallback: parse raw text response (regex-based)
+
   const text = input;
   const result = {
     complexidade: "",

@@ -5,6 +5,7 @@ import chalk from "chalk";
 import cliProgress from "cli-progress";
 import { analyzeWithAI } from "../utils/ai.js";
 import { parseAnalyzeResponse } from "../utils/parser.js";
+import { ProjectMigrationContext } from "../core/context/project-context.js";
 import {
   scanProject,
   saveAnalysis,
@@ -95,6 +96,13 @@ export async function scanCommand(projectPath, opts) {
       `análise IA: ${analysis.files.length} arquivo(s) | provedor configurado`,
     );
 
+
+    const scanContext = new ProjectMigrationContext(absPath);
+    scanContext.initFromAnalysis(analysis, analysis.registry || null, null);
+    dbgStep(
+      `[context] scan context inicializado — ${scanContext.symbolMap.size} símbolos`,
+    );
+
     const useBar = !isDebug();
     const bar = useBar
       ? new cliProgress.SingleBar(
@@ -128,7 +136,7 @@ export async function scanCommand(projectPath, opts) {
           "analysis",
           `arquivo=${fileInfo.path} | ${code.length} chars`,
         );
-        const raw = await analyzeWithAI(code, fileInfo.path);
+        const raw = await analyzeWithAI(code, fileInfo.path, scanContext);
         const ai = parseAnalyzeResponse(raw);
         dbgAI(
           "resposta",
@@ -147,7 +155,7 @@ export async function scanCommand(projectPath, opts) {
             : fileInfo.dependencies,
         };
 
-        // AI complexity overrides static estimate
+
         if (ai.complexidade) fileInfo.complexity = ai.complexidade;
       } catch {
         fileInfo.aiAnalysis = { error: "Análise AI falhou para este arquivo" };
@@ -170,7 +178,7 @@ export async function scanCommand(projectPath, opts) {
     ui.success(`Registro de símbolos:      ${chalk.cyan(saved.registryFile)}`);
     ui.success(`Grafo de dependências:     ${chalk.cyan(saved.graphFile)}`);
 
-    // Registry summary
+
     const reg = analysis.registry;
     if (reg?.symbols?.length > 0) {
       ui.blank();

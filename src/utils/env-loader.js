@@ -4,10 +4,7 @@ import os from "os";
 
 const ENV_FILE = path.join(os.homedir(), ".ng-migrate", ".env");
 
-/**
- * Loads ~/.ng-migrate/.env into process.env (only vars not already set).
- * Called once at CLI startup before any command runs.
- */
+ 
 export function loadEnvFile() {
   if (!fs.existsSync(ENV_FILE)) return;
 
@@ -32,7 +29,7 @@ export function loadEnvFile() {
       .replace(/^["']|["']$/g, ""); // strip quotes
 
     if (!key) continue;
-    // Never override variables already set in the OS environment
+
     if (process.env[key] === undefined) {
       process.env[key] = val;
     }
@@ -58,7 +55,7 @@ export function readEnvFile() {
       if (key) result[key] = val;
     }
   } catch {
-    /* ignore */
+     
   }
 
   return result;

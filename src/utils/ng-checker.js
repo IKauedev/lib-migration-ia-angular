@@ -5,9 +5,7 @@ import path from "path";
 import chalk from "chalk";
 import ora from "ora";
 
-/**
- * Returns true if the `ng` CLI is reachable on PATH.
- */
+ 
 function isNgInstalled() {
     try {
         const result = spawnSync("ng", ["version", "--skip-confirmation"], {
@@ -20,9 +18,7 @@ function isNgInstalled() {
     }
 }
 
-/**
- * Returns true if `git` is reachable on PATH.
- */
+ 
 export function isGitInstalled() {
     try {
         const result = spawnSync("git", ["--version"], {
@@ -35,14 +31,10 @@ export function isGitInstalled() {
     }
 }
 
-/**
- * Ensures @angular/cli is installed globally.
- * Installs it via `npm install -g @angular/cli@latest` if missing.
- * Exits process if install fails.
- */
+ 
 export async function ensureAngularCLI() {
     if (isNgInstalled()) {
-        return; // already available, nothing to do
+        return;
     }
 
     const spinner = ora(
@@ -68,10 +60,7 @@ export async function ensureAngularCLI() {
     }
 }
 
-/**
- * Clones a git repository into `destDir`.
- * Throws an error if git is not installed or the clone fails.
- */
+ 
 export async function cloneRepo(gitUrl, destDir) {
     if (!isGitInstalled()) {
         throw new Error(
@@ -81,22 +70,12 @@ export async function cloneRepo(gitUrl, destDir) {
     await runCommandLive(`git clone --depth=1 "${gitUrl}" "${destDir}"`);
 }
 
-/**
- * Runs `npm install` inside `cwd`.
- * Throws on failure.
- */
+ 
 export async function runNpmInstall(cwd) {
     await runCommandLive("npm install", { cwd });
 }
 
-/**
- * Scaffolds a new Angular 21 project via `ng new` into `outputDir`.
- * Uses --skip-install so the caller can run npm install after patching package.json.
- * Throws on failure.
- *
- * @param {string} appName  - Angular project name (slug, e.g. "my-app")
- * @param {string} outputDir - Absolute path to the target directory
- */
+ 
 export function scaffoldAngularProject(appName, outputDir) {
     const parentDir = path.dirname(outputDir);
     const dirName = path.basename(outputDir);

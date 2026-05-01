@@ -39,7 +39,7 @@ export async function replCommand() {
   rl.on('line', async (line) => {
     const trimmed = line.trim();
 
-    // Comandos especiais
+
     if (!inMultiline) {
       if (trimmed === 'sair' || trimmed === 'exit' || trimmed === 'quit') {
         ui.blank();
@@ -65,7 +65,7 @@ export async function replCommand() {
 
       if (trimmed === '') {
         if (buffer.length > 0) {
-          // Linha em branco com buffer = submeter
+
           await processInput(buffer.join('\n'), conversationHistory, rl);
           buffer = [];
           inMultiline = false;
@@ -75,7 +75,7 @@ export async function replCommand() {
         return;
       }
 
-      // Detecta início de código multi-linha (abre { ou tem múltiplas linhas)
+
       if (trimmed.includes('\n') || looksLikeCode(trimmed)) {
         buffer.push(line);
         inMultiline = true;
@@ -83,10 +83,10 @@ export async function replCommand() {
         return;
       }
 
-      // Mensagem simples
+
       await processInput(trimmed, conversationHistory, rl);
     } else {
-      // Modo multi-linha
+
       if (trimmed === '') {
         await processInput(buffer.join('\n'), conversationHistory, rl);
         buffer = [];
@@ -138,7 +138,7 @@ async function processInput(input, history, rl) {
       ui.code('angularjs', parsed.codigoOriginal || input);
       ui.code('angular', parsed.codigoMigrado);
     } else {
-      // Resposta em texto livre
+
       ui.blank();
       response.split('\n').forEach(line => {
         if (line.trim()) {

@@ -1,9 +1,3 @@
-/**
- * AI provider router.
- * Routes AI requests to the correct provider client and handles
- * single-turn and multi-turn conversations.
- */
-
 import chalk from "chalk";
 import { loadConfig, getProviderConfig, PROVIDERS } from "../utils/config-manager.js";
 import {
@@ -16,7 +10,7 @@ import {
     buildGeminiClient,
 } from "./clients.js";
 
-// ── Key validation ────────────────────────────────────────────────────────────
+
 
 function assertKey(cfg, providerName) {
     const meta = PROVIDERS[providerName];
@@ -30,15 +24,9 @@ function assertKey(cfg, providerName) {
     }
 }
 
-// ── Single-turn ───────────────────────────────────────────────────────────────
 
-/**
- * Send a single system+user message to the configured AI provider.
- * @param {string} systemPrompt
- * @param {string} userMessage
- * @param {{ provider?: string, maxTokens?: number }} opts
- * @returns {Promise<string>}
- */
+
+ 
 export async function sendToProvider(systemPrompt, userMessage, opts = {}) {
     const config = loadConfig();
     const providerName = opts.provider || config.activeProvider;
@@ -138,15 +126,9 @@ export async function sendToProvider(systemPrompt, userMessage, opts = {}) {
     );
 }
 
-// ── Multi-turn chat ───────────────────────────────────────────────────────────
 
-/**
- * Send a multi-turn conversation to the configured AI provider.
- * @param {Array<{role: string, content: string}>} messages
- * @param {string} systemPrompt
- * @param {{ provider?: string, maxTokens?: number }} opts
- * @returns {Promise<string>}
- */
+
+ 
 export async function sendChatToProvider(messages, systemPrompt, opts = {}) {
     const config = loadConfig();
     const providerName = opts.provider || config.activeProvider;
@@ -208,7 +190,7 @@ export async function sendChatToProvider(messages, systemPrompt, opts = {}) {
     throw new Error(`Provedor desconhecido: "${providerName}".`);
 }
 
-// ── Active provider name ──────────────────────────────────────────────────────
+
 
 export function getActiveProviderName() {
     return loadConfig().activeProvider;

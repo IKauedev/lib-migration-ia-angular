@@ -1,8 +1,3 @@
-/**
- * @deprecated
- * Re-exports from src/providers/ for backward compatibility.
- * New code should import directly from "../providers/router.js" or "../providers/clients.js".
- */
 export {
     sendToProvider,
     sendChatToProvider,

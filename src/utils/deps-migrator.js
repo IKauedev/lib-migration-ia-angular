@@ -1,7 +1,6 @@
-// Maps AngularJS/old Angular packages to their Angular 21 equivalents
 const DEP_MAP = {
-  // AngularJS core
-  angular: null, // remove
+
+  angular: null,
   "angular-route": null,
   "angular-resource": null,
   "angular-animate": null,
@@ -12,35 +11,35 @@ const DEP_MAP = {
   "angular-cookies": null,
   "angular-mocks": null,
 
-  // UI Router
+
   "@uirouter/angularjs": "@uirouter/angular",
   "angular-ui-router": "@uirouter/angular",
 
-  // Angular Material AngularJS
+
   "angular-material": "@angular/material",
 
-  // HTTP
+
   "angular-http": null,
 
-  // i18n
+
   "angular-translate": "@ngx-translate/core",
   "angular-gettext": "@ngx-translate/core",
 
-  // Forms
+
   "angular-formly": "@ngx-formly/core",
 
-  // State management
+
   "angular-redux": "@ngrx/store",
   "ng-redux": "@ngrx/store",
 
-  // Utilities
-  lodash: "lodash", // keep
-  moment: "date-fns", // suggest migration
-  jquery: null, // remove
-  bootstrap: "bootstrap", // keep, upgrade to 5
+
+  lodash: "lodash",
+  moment: "date-fns",
+  jquery: null,
+  bootstrap: "bootstrap",
 };
 
-// Angular 21 packages to always add
+
 const ANGULAR21_DEPS = {
   "@angular/animations": "^21.0.0",
   "@angular/common": "^21.0.0",
@@ -73,7 +72,7 @@ export function migrateDependencies(originalPkg) {
   } else {
     parsed = originalPkg;
   }
-  const pkg = JSON.parse(JSON.stringify(parsed)); // deep clone
+  const pkg = JSON.parse(JSON.stringify(parsed));
   const report = { removed: [], added: [], updated: [], warnings: [] };
 
   const allDeps = {
@@ -81,7 +80,7 @@ export function migrateDependencies(originalPkg) {
     ...pkg.devDependencies,
   };
 
-  // Remove AngularJS deps, map replacements
+
   for (const [dep, replacement] of Object.entries(DEP_MAP)) {
     if (dep in (pkg.dependencies || {})) {
       delete pkg.dependencies[dep];
@@ -99,7 +98,7 @@ export function migrateDependencies(originalPkg) {
     }
   }
 
-  // Remove old @angular/* versions
+
   for (const key of Object.keys(pkg.dependencies || {})) {
     if (key.startsWith("@angular/") && key in ANGULAR21_DEPS) {
       const old = pkg.dependencies[key];
@@ -108,7 +107,7 @@ export function migrateDependencies(originalPkg) {
     }
   }
 
-  // Add missing Angular 21 core deps
+
   pkg.dependencies = pkg.dependencies || {};
   for (const [dep, ver] of Object.entries(ANGULAR21_DEPS)) {
     if (!(dep in pkg.dependencies)) {
@@ -117,7 +116,7 @@ export function migrateDependencies(originalPkg) {
     }
   }
 
-  // Update devDeps
+
   pkg.devDependencies = pkg.devDependencies || {};
   for (const [dep, ver] of Object.entries(ANGULAR21_DEV_DEPS)) {
     const old = pkg.devDependencies[dep];
@@ -127,7 +126,7 @@ export function migrateDependencies(originalPkg) {
     else if (!old) report.added.push(`${dep}@${ver} (devDep)`);
   }
 
-  // Update scripts
+
   pkg.scripts = pkg.scripts || {};
   pkg.scripts["start"] = "ng serve";
   pkg.scripts["build"] = "ng build";
@@ -135,7 +134,7 @@ export function migrateDependencies(originalPkg) {
   pkg.scripts["test"] = "ng test";
   pkg.scripts["lint"] = "ng lint";
 
-  // Minimum Node engine
+
   pkg.engines = { node: ">=20.0.0" };
 
   return { pkg, report, content: JSON.stringify(pkg, null, 2) };

@@ -1,8 +1,3 @@
-/**
- * Project scanner — public API.
- * Orchestrates the full static analysis of an AngularJS project.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import { glob } from "glob";
@@ -25,20 +20,15 @@ import {
 
 import { getMigrationPhase, estimateHours, PHASE_NAMES } from "./phase-planner.js";
 
-// ── File name constants ───────────────────────────────────────────────────────
+
 
 export const ANALYSIS_FILE_NAME = ".ng-migrate-analysis.json";
 export const REGISTRY_FILE_NAME = ".ng-migrate-registry.json";
 export const DEPS_GRAPH_FILE_NAME = ".ng-migrate-deps-graph.json";
 
-// ── Main scanner ──────────────────────────────────────────────────────────────
 
-/**
- * Scans a project directory and returns a structured analysis object.
- * @param {string} projectPath  Absolute path to the project root.
- * @param {{ includeAll?: boolean }} opts
- * @returns {Promise<object>}
- */
+
+ 
 export async function scanProject(projectPath, opts = {}) {
     const allRelFiles = await glob("**/*.{js,ts,html}", {
         cwd: projectPath,
@@ -97,12 +87,12 @@ export async function scanProject(projectPath, opts = {}) {
         });
     }
 
-    // Sort by phase asc, then by LOC desc within same phase
+
     fileResults.sort((a, b) =>
         a.phase !== b.phase ? a.phase - b.phase : b.loc - a.loc,
     );
 
-    // Read package.json
+
     let projectDependencies = {};
     const pkgPath = path.join(projectPath, "package.json");
     if (fs.existsSync(pkgPath)) {
@@ -113,7 +103,7 @@ export async function scanProject(projectPath, opts = {}) {
                 ...(pkg.devDependencies || {}),
             };
         } catch {
-            /* ignore */
+             
         }
     }
 
@@ -122,7 +112,7 @@ export async function scanProject(projectPath, opts = {}) {
         projectDependencies["angularjs"] ||
         "unknown";
 
-    // Migration plan
+
     const migrationPlan = {
         phases: [1, 2, 3, 4, 5, 6]
             .map((i) => ({
@@ -133,7 +123,7 @@ export async function scanProject(projectPath, opts = {}) {
             .filter((p) => p.files.length > 0),
     };
 
-    // Complexity distribution
+
     const dist = {
         alta: fileResults.filter((r) => r.complexity === "alta").length,
         média: fileResults.filter((r) => r.complexity === "média").length,
@@ -146,7 +136,7 @@ export async function scanProject(projectPath, opts = {}) {
         "média" :
         "baixa";
 
-    // Top patterns
+
     const patternFrequency = {};
     for (const f of fileResults) {
         for (const p of f.patterns) {
@@ -158,7 +148,7 @@ export async function scanProject(projectPath, opts = {}) {
         .slice(0, 15)
         .map(([name, count]) => ({ name, count }));
 
-    // Symbol registry
+
     const symbolRegistry = {
         version: "1.0",
         generatedAt: new Date().toISOString(),
@@ -171,7 +161,7 @@ export async function scanProject(projectPath, opts = {}) {
         ),
     };
 
-    // Dependency graph
+
     const depsGraph = {
         version: "1.0",
         generatedAt: new Date().toISOString(),
@@ -201,9 +191,9 @@ export async function scanProject(projectPath, opts = {}) {
     };
 }
 
-// ── Persistence helpers ───────────────────────────────────────────────────────
 
-/** @param {string} projectPath */
+
+ 
 export function loadAnalysis(projectPath) {
     const f = path.join(projectPath, ANALYSIS_FILE_NAME);
     if (!fs.existsSync(f)) return null;
@@ -214,7 +204,7 @@ export function loadAnalysis(projectPath) {
     }
 }
 
-/** @param {string} projectPath @param {object} analysis */
+ 
 export function saveAnalysis(projectPath, analysis) {
     const { registry, depsGraph, ...core } = analysis;
 
@@ -230,7 +220,7 @@ export function saveAnalysis(projectPath, analysis) {
     return { analysisFile, registryFile, graphFile };
 }
 
-/** @param {string} projectPath */
+ 
 export function loadRegistry(projectPath) {
     const f = path.join(projectPath, REGISTRY_FILE_NAME);
     if (!fs.existsSync(f)) return null;
@@ -241,7 +231,7 @@ export function loadRegistry(projectPath) {
     }
 }
 
-/** @param {string} projectPath */
+ 
 export function loadDepsGraph(projectPath) {
     const f = path.join(projectPath, DEPS_GRAPH_FILE_NAME);
     if (!fs.existsSync(f)) return null;
