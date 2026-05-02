@@ -1,6 +1,6 @@
 {
   "name": "ng-migrate-angularjs-ai",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "CLI inteligente para migração de AngularJS → Angular 21 usando IA (multi-provider)",
   "main": "src/index.js",
   "types": "src/index.d.ts",
