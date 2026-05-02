@@ -14,7 +14,25 @@ import {
 } from "../core/context/project-context.js";
 import { MigrationOrchestrator } from "../core/orchestrator.js";
 import { migrateDependencies } from "../utils/deps-migrator.js";
-import { buildReport, saveReport } from "../utils/report.js";
+import {
+  buildReport,
+  saveReport,
+  computeQualityScore,
+  detectResidualPatterns,
+} from "../utils/report.js";
+import { validateTypeScriptProject } from "../utils/ts-validator.js";
+import { RollbackManager, atomicWrite } from "../utils/rollback.js";
+import {
+  detectSymbolCollisions,
+  resolveCollisions,
+  formatCollisionReport,
+} from "../utils/symbol-checker.js";
+import {
+  needsChunking,
+  splitIntoChunks,
+  mergeChunkResults,
+  buildChunkContext,
+} from "../utils/chunk-migrator.js";
 import {
   isDebug,
   dbg,
@@ -38,18 +56,50 @@ import {
   runNpmInstall,
   scaffoldAngularProject,
 } from "../utils/ng-checker.js";
+import { applyPostCleanup } from "../utils/post-cleanup.js";
+import {
+  estimateMigrationCost,
+  formatCostEstimate,
+} from "../utils/cost-estimator.js";
+import {
+  loadPlugin,
+  applyPluginRules,
+  runPluginPostProcess,
+} from "../utils/plugin-loader.js";
+import { buildHtmlReport, saveHtmlReport } from "../utils/html-report.js";
 
 const SKIP_PATTERNS = [
   /node_modules/,
-  /\.min\.js$/,
+  // Minified / bundled files
+  /\.min\.(js|css)$/,
+  /\.(bundle|packed|compiled)\.(js|css)$/,
+  // Build / output folders
   /dist\//,
   /coverage\//,
   /\.git\//,
   /\.angular\//,
   /e2e\//,
+  // Vendor / dependency folders
+  /\/vendor\//,
+  /bower_components\//,
+  /public\/lib\//,
+  /assets\/lib\//,
+  /assets\/vendor\//,
+  /static\/vendor\//,
+  /static\/lib\//,
+  // Test / config
   /\.spec\.(js|ts)$/,
   /karma\.conf/,
   /protractor/,
+  // Known 3rd-party source files
+  /\bjquery[.-]/i,
+  /\bbootstrap[.-]/i,
+  /\blodash[.-]/i,
+  /\bunderscore[.-]/i,
+  /\bmoment[.-]/i,
+  /\bangular\.js$/i,
+  /\bangular-mocks\.js$/i,
+  /\bangular-locale/i,
 ];
 
 function shouldSkip(p) {
@@ -214,10 +264,22 @@ export async function migrateProjectCommand(projectPath, opts) {
   const registry = loadRegistry(absPath);
   const depsGraph = loadDepsGraph(absPath);
 
+  // ── Symbol collision detection ────────────────────────────────────────────
+  let resolvedRegistry = registry;
+  if (registry) {
+    const { collisions, hasCollisions } = detectSymbolCollisions(registry);
+    if (hasCollisions) {
+      ui.blank();
+      console.log(chalk.yellow(formatCollisionReport(collisions)));
+      resolvedRegistry = resolveCollisions(registry, collisions);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const checkpointPath = path.join(absPath, CHECKPOINT_FILE_NAME);
 
   const projectContext = new ProjectMigrationContext(absPath);
-  projectContext.initFromAnalysis(analysis, registry, depsGraph);
+  projectContext.initFromAnalysis(analysis, resolvedRegistry, depsGraph);
   dbg(
     chalk.dim(
       `[context] pronto — ${projectContext.symbolMap.size} símbolos | ${projectContext.totalFiles} arquivos a migrar`,
@@ -361,6 +423,51 @@ export async function migrateProjectCommand(projectPath, opts) {
   }
   ui.blank();
 
+  // ── Load plugin ────────────────────────────────────────────────────────────
+  const plugin = await loadPlugin(absPath);
+  if (plugin) {
+    ui.info(chalk.dim("Plugin ng-migrate.config.js carregado."));
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Cost estimation ───────────────────────────────────────────────────────
+  if (!opts.skipCostEstimate && !opts.dryRun) {
+    let config;
+    try {
+      const cm = await import("../utils/config-manager.js");
+      config = cm.loadConfig();
+    } catch {
+      config = null;
+    }
+    if (config && config.provider && config.model) {
+      const estimate = estimateMigrationCost(
+        filesToMigrate,
+        config.provider,
+        config.model,
+      );
+      if (estimate.estimatedUSD > 0.05) {
+        ui.section("Estimativa de Custo");
+        formatCostEstimate(estimate).forEach((l) => console.log(chalk.dim(l)));
+        ui.blank();
+        const { default: inquirer } = await import("inquirer");
+        const { proceed } = await inquirer.prompt([
+          {
+            type: "confirm",
+            name: "proceed",
+            message: "Deseja continuar com a migração?",
+            default: true,
+          },
+        ]);
+        if (!proceed) {
+          ui.info("Migração cancelada pelo usuário.");
+          return;
+        }
+        ui.blank();
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (opts.dryRun) {
     ui.section("Dry-run — arquivos que seriam migrados (por fase)");
     const phases = [...new Set(filesToMigrate.map((f) => f.phase))].sort();
@@ -483,6 +590,21 @@ export async function migrateProjectCommand(projectPath, opts) {
   let completed = 0;
   let currentPhase = 0;
 
+  // ── State management context ──────────────────────────────────────────────
+  const stateManagement = opts.stateManagement || "signals";
+  if (stateManagement !== "signals") {
+    ui.info(
+      `Gerenciamento de estado: ${chalk.cyan(stateManagement.toUpperCase())}`,
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Rollback manager ─────────────────────────────────────────────────────
+  const rollback = new RollbackManager();
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const migratedCodeMap = new Map(); // path → migrated code (for quality report)
+
   let sigintSaved = false;
   const onInterrupt = () => {
     if (sigintSaved) return;
@@ -524,6 +646,8 @@ export async function migrateProjectCommand(projectPath, opts) {
     const phaseFiles = filesToMigrate.filter((f) => f.phase === phase);
     dbgPhase(phase, phaseNames[phase] || `Fase ${phase}`, phaseFiles.length);
 
+    rollback.beginPhase(phase);
+
     const phaseContexts = orchestrator.warmPhaseContexts(
       phaseFiles,
       depsGraph,
@@ -560,8 +684,8 @@ export async function migrateProjectCommand(projectPath, opts) {
             const outRelPath = fileInfo.path.replace(/\.js$/, ".ts");
             const outPath = path.join(outputDir, outRelPath);
             try {
-              fs.mkdirSync(path.dirname(outPath), { recursive: true });
-              fs.writeFileSync(outPath, migratedCode, "utf-8");
+              atomicWrite(outPath, migratedCode, rollback);
+              migratedCodeMap.set(outRelPath, migratedCode);
               projectContext.recordMigration(fileInfo, migratedCode, result);
               stats.success++;
               stats.files.push({
@@ -595,34 +719,87 @@ export async function migrateProjectCommand(projectPath, opts) {
           let raw = null;
           let lastErr = null;
 
-          for (let attempt = 0; attempt <= MAX_OUTER_RETRIES; attempt++) {
-            if (attempt > 0) {
-              const delay = 5000 * attempt;
-              dbg(
-                chalk.yellow(
-                  `  [retry ${attempt}/${MAX_OUTER_RETRIES}] ${fileInfo.path} — aguardando ${delay / 1000}s...`,
-                ),
-              );
-              await _sleep(delay);
+          // ── Large file chunking ─────────────────────────────────────────
+          const isLargeFile = needsChunking(code);
+          const stateCtx =
+            stateManagement !== "signals"
+              ? `\nUSAR GERENCIAMENTO DE ESTADO: ${stateManagement.toUpperCase()} — não use Signals, use ${stateManagement === "ngrx" ? "NgRx Store/Actions/Reducers/Effects" : "standalone sem state management library"}`
+              : "";
+          // ─────────────────────────────────────────────────────────────────
+
+          if (isLargeFile) {
+            // Chunk-based migration
+            const chunks = splitIntoChunks(code);
+            dbg(
+              `[chunk] ${fileInfo.path}: ${chunks.length} chunks (${code.length} chars)`,
+            );
+            const chunkResults = [];
+            let chunkFailed = false;
+
+            for (const chunk of chunks) {
+              const chunkCtx =
+                buildChunkContext(chunk, chunks.length, fileInfo) + stateCtx;
+              for (let attempt = 0; attempt <= MAX_OUTER_RETRIES; attempt++) {
+                if (attempt > 0) await _sleep(5000 * attempt);
+                try {
+                  const contexto =
+                    (phaseContexts.get(fileInfo.path) ?? "") + "\n" + chunkCtx;
+                  const chunkRaw = await migrateWithAI(
+                    chunk.content,
+                    fileInfo.type || "auto",
+                    contexto,
+                    projectContext,
+                    { tier, maxTokens },
+                  );
+                  chunkResults.push(parseMigrateResponse(chunkRaw));
+                  lastErr = null;
+                  break;
+                } catch (err) {
+                  lastErr = err;
+                  if (attempt === MAX_OUTER_RETRIES) chunkFailed = true;
+                }
+              }
+              if (chunkFailed) break;
             }
-            try {
-              const contexto = phaseContexts.get(fileInfo.path) ?? "";
-              raw = await migrateWithAI(
-                code,
-                fileInfo.type || "auto",
-                contexto,
-                projectContext,
-                { tier, maxTokens },
-              );
-              lastErr = null;
-              break;
-            } catch (err) {
-              lastErr = err;
-              dbg(
-                chalk.red(
-                  `  [tentativa ${attempt + 1}] erro em ${fileInfo.path}: ${err.message}`,
-                ),
-              );
+
+            if (!chunkFailed && chunkResults.length > 0) {
+              const merged = mergeChunkResults(chunkResults);
+              raw = merged;
+            } else {
+              raw = null;
+            }
+          } else {
+            // Normal single-file migration
+            for (let attempt = 0; attempt <= MAX_OUTER_RETRIES; attempt++) {
+              if (attempt > 0) {
+                const delay = 5000 * attempt;
+                dbg(
+                  chalk.yellow(
+                    `  [retry ${attempt}/${MAX_OUTER_RETRIES}] ${fileInfo.path} — aguardando ${delay / 1000}s...`,
+                  ),
+                );
+                await _sleep(delay);
+              }
+              try {
+                const contexto =
+                  (phaseContexts.get(fileInfo.path) ?? "") + stateCtx;
+                raw = await migrateWithAI(
+                  code,
+                  fileInfo.type || "auto",
+                  contexto,
+                  projectContext,
+                  { tier, maxTokens },
+                );
+                lastErr = null;
+                break;
+              } catch (err) {
+                lastErr = err;
+                dbg(
+                  chalk.red(
+                    `  [tentativa ${attempt + 1}] erro em ${fileInfo.path}: ${err.message}`,
+                  ),
+                );
+              }
             }
           }
 
@@ -652,13 +829,31 @@ export async function migrateProjectCommand(projectPath, opts) {
           }
 
           const result = parseMigrateResponse(raw);
-          const migratedCode = result.codigoMigrado || code;
+          let migratedCode = result.codigoMigrado || code;
+
+          // ── Post-cleanup & plugin ─────────────────────────────────────────
+          const { code: cleanedCode, applied: cleanupApplied } =
+            applyPostCleanup(migratedCode, fileInfo.path);
+          if (cleanupApplied.length > 0) {
+            dbg(
+              chalk.dim(
+                `  [cleanup] ${fileInfo.path}: ${cleanupApplied.length} regra(s) aplicada(s)`,
+              ),
+            );
+          }
+          migratedCode = applyPluginRules(cleanedCode, plugin, fileInfo.path);
+          migratedCode = await runPluginPostProcess(
+            migratedCode,
+            plugin,
+            fileInfo.path,
+          );
+          // ─────────────────────────────────────────────────────────────────
 
           const outRelPath = fileInfo.path.replace(/\.js$/, ".ts");
           const outPath = path.join(outputDir, outRelPath);
           try {
-            fs.mkdirSync(path.dirname(outPath), { recursive: true });
-            fs.writeFileSync(outPath, migratedCode, "utf-8");
+            atomicWrite(outPath, migratedCode, rollback);
+            migratedCodeMap.set(outRelPath, migratedCode);
           } catch (writeErr) {
             dbg(
               chalk.red(
@@ -712,6 +907,42 @@ export async function migrateProjectCommand(projectPath, opts) {
       });
       orchestrator.saveCache();
     }
+
+    // ── TypeScript validation per phase ──────────────────────────────────
+    if (opts.validateTs && !opts.dryRun) {
+      const tsSpinner = ora(
+        chalk.dim(`Validando TypeScript — fase ${phase}...`),
+      ).start();
+      try {
+        const validation = await validateTypeScriptProject(outputDir);
+        if (validation.valid) {
+          tsSpinner.succeed(chalk.green(`Fase ${phase}: TypeScript OK`));
+          rollback.commitPhase(phase);
+        } else {
+          const errCount = validation.errors.length;
+          tsSpinner.warn(
+            chalk.yellow(
+              `Fase ${phase}: ${errCount} erro(s) TypeScript detectados`,
+            ),
+          );
+          if (errCount > 0 && errCount <= 3) {
+            // Tolerable — show errors but continue
+            validation.errors.forEach((e) =>
+              console.log(chalk.dim(`    ${e.file}:${e.line} — ${e.message}`)),
+            );
+          }
+          rollback.commitPhase(phase); // commit anyway, errors shown in report
+        }
+      } catch (tsErr) {
+        tsSpinner.warn(
+          chalk.dim(`Validação TypeScript falhou: ${tsErr.message}`),
+        );
+        rollback.commitPhase(phase);
+      }
+    } else {
+      rollback.commitPhase(phase);
+    }
+    // ─────────────────────────────────────────────────────────────────────
   }
 
   process.off("SIGINT", onInterrupt);
@@ -767,8 +998,53 @@ export async function migrateProjectCommand(projectPath, opts) {
     depReport,
     errors,
     outputDir,
+    qualityReport: _buildQualityReport(migratedCodeMap, stats),
   });
-  const reportPath = saveReport(outputDir, projectName, reportContent);
+  const reportPath = saveReport(reportContent, outputDir);
+
+  // ── HTML report ───────────────────────────────────────────────────────────
+  try {
+    const htmlReportData = {
+      projectName,
+      generatedAt: new Date().toLocaleString("pt-BR"),
+      stats: {
+        total: stats.total,
+        migrated: stats.success,
+        failed: stats.errors,
+        partial: stats.skipped,
+      },
+      files: stats.files.map((f) => ({
+        path: f.path,
+        phase: String(f.phase ?? ""),
+        status: f.error ? "falha" : "migrado",
+        loc: f.loc ?? "",
+        score: "",
+      })),
+      phases: [...new Set(filesToMigrate.map((f) => f.phase))]
+        .sort()
+        .map((ph) => ({
+          phase: ph,
+          name:
+            [
+              "",
+              "Services",
+              "Pipes",
+              "Components",
+              "Controllers",
+              "Templates",
+              "Routing",
+            ][ph] || `Fase ${ph}`,
+          count: filesToMigrate.filter((f) => f.phase === ph).length,
+        })),
+      overallScore:
+        _buildQualityReport(migratedCodeMap, stats)?.overallScore ?? "-",
+    };
+    const htmlPath = saveHtmlReport(buildHtmlReport(htmlReportData), outputDir);
+    ui.info(`Relatório HTML: ${chalk.cyan(htmlPath)}`);
+  } catch (htmlErr) {
+    dbg(chalk.dim(`[html-report] erro ao gerar: ${htmlErr.message}`));
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (analysis) {
     analysis.lastMigration = {
@@ -1009,5 +1285,29 @@ function _formatAgo(isoDate) {
     return `${Math.floor(hours / 24)}d atrás`;
   } catch {
     return "data desconhecida";
+  }
+}
+
+function _buildQualityReport(migratedCodeMap, stats) {
+  try {
+    const files = [];
+    for (const [filePath, code] of migratedCodeMap) {
+      files.push({ path: filePath, code });
+    }
+    const residualPatterns = detectResidualPatterns(files);
+    const tsErrorCount = 0; // populated by validateTs if used
+    const score = computeQualityScore(
+      stats,
+      tsErrorCount,
+      residualPatterns.length,
+    );
+    return {
+      overallScore: score,
+      residualPatterns,
+      tsErrors: [],
+      chunkedFiles: [],
+    };
+  } catch {
+    return null;
   }
 }

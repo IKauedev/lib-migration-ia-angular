@@ -1,6 +1,6 @@
 {
   "name": "ng-migrate-angularjs-ai",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "CLI inteligente para migração de AngularJS → Angular 21 usando IA (multi-provider)",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -16,7 +16,11 @@
     "install-global": "npm install -g .",
     "uninstall-global": "npm uninstall -g ng-migrate-angularjs-ai",
     "prepublishOnly": "node -e \"console.log('Publicando ng-migrate-angularjs-ai...')\"",
-    "postinstall": "node -e \"console.log('\\n  ng-migrate-angularjs-ai instalado! Execute: ng-migrate-angularjs-ai\\n')\""
+    "postinstall": "node -e \"console.log('\\n  ng-migrate-angularjs-ai instalado! Execute: ng-migrate-angularjs-ai\\n')\"",
+    "test": "node --experimental-vm-modules node_modules/jest-cli/bin/jest.js",
+    "test:unit": "node --experimental-vm-modules node_modules/jest-cli/bin/jest.js tests/unit",
+    "test:integration": "node --experimental-vm-modules node_modules/jest-cli/bin/jest.js tests/integration",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest-cli/bin/jest.js --coverage"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -25,24 +29,25 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "^0.21.0",
-    "openai": "^4.77.0",
-    "@langchain/core": "^0.3.0",
-    "@langchain/openai": "^0.3.0",
     "@langchain/anthropic": "^0.3.0",
+    "@langchain/core": "^0.3.0",
     "@langchain/google-genai": "^0.1.0",
-    "zod": "^3.23.0",
-    "chalk": "^5.3.0",
-    "ora": "^8.0.1",
-    "inquirer": "^10.0.0",
+    "@langchain/openai": "^0.3.0",
     "boxen": "^7.1.1",
-    "glob": "^11.0.0",
-    "commander": "^12.0.0",
-    "simple-git": "^3.27.0",
-    "node-fetch": "^3.3.2",
-    "p-limit": "^6.1.0",
+    "chalk": "^5.3.0",
     "cli-progress": "^3.12.0",
+    "commander": "^12.0.0",
     "diff": "^7.0.0",
-    "js-yaml": "^4.1.0"
+    "glob": "^11.0.0",
+    "inquirer": "^10.0.0",
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.77.0",
+    "ora": "^8.0.1",
+    "p-limit": "^6.1.0",
+    "chokidar": "^4.0.0",
+    "simple-git": "^3.27.0",
+    "zod": "^3.23.0"
   },
   "keywords": [
     "angular",
@@ -72,6 +77,10 @@
     "install.ps1",
     "install.sh"
   ],
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "jest": "^29.7.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/IKauedev/lib-migration-ia-angular.git"

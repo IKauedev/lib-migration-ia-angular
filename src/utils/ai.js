@@ -8,10 +8,7 @@ import {
   MODEL_TIERS,
 } from "../core/persona/migration-persona.js";
 
-
 const SYSTEM_PROMPT_DEFAULT = buildSystemPrompt(MODEL_TIERS.STANDARD);
-
-
 
 const MigrationSchema = z.object({
   tipo: z
@@ -63,8 +60,6 @@ const AnalysisSchema = z.object({
   resumo: z.string().describe("Parágrafo curto com resumo geral da análise"),
 });
 
-
-
 async function retryWithBackoff(fn, maxRetries = 3, baseDelayMs = 1000) {
   let lastError;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -95,9 +90,6 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelayMs = 1000) {
   throw lastError;
 }
 
-
-
- 
 export async function migrateWithAI(
   code,
   tipo = "auto",
@@ -129,7 +121,6 @@ export async function migrateWithAI(
   let result;
 
   if (projectContext) {
-
     const history = projectContext.getMessageHistory();
 
     const contextoParts = [contexto || ""].filter(Boolean);
@@ -150,7 +141,6 @@ export async function migrateWithAI(
       ]),
     );
   } else {
-
     const prompt = ChatPromptTemplate.fromMessages([
       ["system", SYSTEM_PROMPT],
       [
@@ -176,9 +166,6 @@ export async function migrateWithAI(
   return result;
 }
 
-
-
- 
 export async function analyzeWithAI(
   code,
   filename = "",
@@ -196,7 +183,6 @@ export async function analyzeWithAI(
   let result;
 
   if (projectContext) {
-
     const history = projectContext.getMessageHistory();
     const humanText =
       `Analise este código AngularJS do arquivo "${filename}" no contexto do projeto e retorne:\n` +
@@ -215,7 +201,6 @@ export async function analyzeWithAI(
       ]),
     );
   } else {
-
     const prompt = ChatPromptTemplate.fromMessages([
       ["system", SYSTEM_PROMPT_DEFAULT],
       [
@@ -237,8 +222,6 @@ export async function analyzeWithAI(
   return result;
 }
 
-
-
 export async function chatWithAI(messages) {
   const model = await buildModel(TASK_TYPES.CHAT, { maxTokens: 4096 });
 
@@ -252,9 +235,131 @@ export async function chatWithAI(messages) {
 
   const result = await model.invoke(langchainMessages);
 
-
   if (typeof result.content === "string") return result.content;
   if (Array.isArray(result.content))
     return result.content.map((b) => b.text ?? b).join("");
   return String(result.content);
+}
+
+const TestGenerationSchema = z.object({
+  testFile: z
+    .string()
+    .describe("Código completo do arquivo de teste .spec.ts para Angular/Jest"),
+  testCount: z.number().describe("Número de casos de teste gerados"),
+  coverage: z.array(z.string()).describe("Aspectos cobertos pelos testes"),
+  notes: z
+    .string()
+    .optional()
+    .default("")
+    .describe("Observações sobre os testes gerados"),
+});
+
+/**
+ * Gera testes unitários Angular/Jest para um arquivo migrado.
+ * @param {string} migratedCode - Código Angular migrado
+ * @param {string} filename - Nome do arquivo (para contexto)
+ * @param {string} [tipo] - Tipo do componente (service, component, pipe, etc.)
+ * @returns {Promise<{testFile: string, testCount: number, coverage: string[], notes: string}>}
+ */
+export async function generateTestsWithAI(
+  migratedCode,
+  filename = "",
+  tipo = "auto",
+) {
+  const model = await buildModel(TASK_TYPES.MIGRATION, { maxTokens: 4096 });
+  const structured = model.withStructuredOutput(TestGenerationSchema);
+
+  const systemPrompt = `Você é um especialista em testes Angular com Jest/Jasmine.
+Gere testes unitários completos para código Angular 21 com standalone components e Signals.
+Use TestBed, HttpClientTestingModule, RouterTestingModule quando necessário.
+Siga o padrão AAA (Arrange, Act, Assert).
+Os testes devem cobrir: criação do componente/serviço, métodos públicos, casos de erro, e integração com dependencies injetadas.`;
+
+  const humanText = `Gere um arquivo de testes .spec.ts completo para o seguinte arquivo Angular 21.
+Arquivo: ${filename}
+Tipo: ${tipo}
+
+Código:
+\`\`\`typescript
+${migratedCode}
+\`\`\`
+
+Requisitos:
+- Use Jest (describe/it/expect) ou Jasmine
+- Import correto de TestBed, ComponentFixture, etc.
+- Mock de todas as dependências injetadas
+- Testar casos de sucesso E falha
+- Incluir pelo menos 5 casos de teste`;
+
+  dbgAI(
+    "enviando",
+    "test-generation",
+    `arquivo=${filename} | código=${migratedCode.length} chars`,
+  );
+
+  const result = await retryWithBackoff(async () =>
+    structured.invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(humanText),
+    ]),
+  );
+
+  dbgAI(
+    "resposta",
+    "test-generation",
+    `testes=${result.testCount} | cobertura=${result.coverage?.length ?? 0}`,
+  );
+  return result;
+}
+
+/**
+ * Migra um arquivo de testes AngularJS (Jasmine/Karma) para Angular/Jest.
+ * @param {string} specCode - Código original do spec file
+ * @param {string} filename
+ * @returns {Promise<{codigoMigrado: string, mudancas: string[], notas: string}>}
+ */
+export async function migrateSpecWithAI(specCode, filename = "") {
+  const model = await buildModel(TASK_TYPES.MIGRATION, { maxTokens: 4096 });
+  const SpecSchema = z.object({
+    codigoMigrado: z
+      .string()
+      .describe("Arquivo .spec.ts Angular migrado para Jest/Jasmine moderno"),
+    mudancas: z
+      .array(z.string())
+      .describe("Mudanças aplicadas na migração do spec"),
+    notas: z.string().optional().default(""),
+  });
+  const structured = model.withStructuredOutput(SpecSchema);
+
+  const systemPrompt = `Você é um especialista em migração de testes de AngularJS para Angular 21.
+Migre testes Jasmine/Karma de AngularJS para testes Angular com TestBed moderno.
+Use: TestBed.configureTestingModule, ComponentFixture, inject(), HttpClientTestingModule.
+Substitua: $httpBackend por HttpClientTestingModule, $scope por Signals/ComponentRef.`;
+
+  const humanText = `Migre este arquivo de testes AngularJS para Angular 21 moderno:
+Arquivo: ${filename}
+
+\`\`\`javascript
+${specCode}
+\`\`\``;
+
+  dbgAI(
+    "enviando",
+    "spec-migration",
+    `arquivo=${filename} | código=${specCode.length} chars`,
+  );
+
+  const result = await retryWithBackoff(async () =>
+    structured.invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(humanText),
+    ]),
+  );
+
+  dbgAI(
+    "resposta",
+    "spec-migration",
+    `mudanças=${result.mudancas?.length ?? 0}`,
+  );
+  return result;
 }

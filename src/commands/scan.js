@@ -3,6 +3,7 @@ import path from "path";
 import ora from "ora";
 import chalk from "chalk";
 import cliProgress from "cli-progress";
+import pLimit from "p-limit";
 import { analyzeWithAI } from "../utils/ai.js";
 import { parseAnalyzeResponse } from "../utils/parser.js";
 import { ProjectMigrationContext } from "../core/context/project-context.js";
@@ -12,6 +13,7 @@ import {
   loadAnalysis,
   ANALYSIS_FILE_NAME,
 } from "../utils/project-scanner.js";
+import { buildFullLibReport } from "../utils/lib-mapper.js";
 import { ui, printSeparator, printKeyValue } from "../utils/ui.js";
 import { isDebug, dbgFile, dbgAI, dbgScan, dbgStep } from "../utils/debug.js";
 
@@ -96,7 +98,6 @@ export async function scanCommand(projectPath, opts) {
       `análise IA: ${analysis.files.length} arquivo(s) | provedor configurado`,
     );
 
-
     const scanContext = new ProjectMigrationContext(absPath);
     scanContext.initFromAnalysis(analysis, analysis.registry || null, null);
     dbgStep(
@@ -120,56 +121,93 @@ export async function scanCommand(projectPath, opts) {
 
     bar.start(analysis.files.length, 0, { filename: "" });
     let done = 0;
-
-    for (const fileInfo of analysis.files) {
-      bar.update(done, { filename: fileInfo.path });
-      try {
-        const absFilePath = path.join(absPath, fileInfo.path);
-        dbgFile(
-          "lendo",
-          fileInfo.path,
-          `${fs.statSync(absFilePath).size} bytes`,
-        );
-        const code = fs.readFileSync(absFilePath, "utf-8");
-        dbgAI(
-          "enviando",
-          "analysis",
-          `arquivo=${fileInfo.path} | ${code.length} chars`,
-        );
-        const raw = await analyzeWithAI(code, fileInfo.path, scanContext);
-        const ai = parseAnalyzeResponse(raw);
-        dbgAI(
-          "resposta",
-          "analysis",
-          `arquivo=${fileInfo.path} | complexidade=${ai.complexidade || "?"} | padrões=${ai.padroes?.length || 0}`,
-        );
-
-        fileInfo.aiAnalysis = {
-          complexity: ai.complexidade || fileInfo.complexity,
-          patterns: ai.padroes?.length ? ai.padroes : fileInfo.patterns,
-          problems: ai.problemas?.length ? ai.problemas : fileInfo.problems,
-          migrationOrder: ai.ordemSugerida || [],
-          summary: ai.resumo || "",
-          dependencies: ai.dependencias?.length
-            ? ai.dependencias
-            : fileInfo.dependencies,
-        };
-
-
-        if (ai.complexidade) fileInfo.complexity = ai.complexidade;
-      } catch {
-        fileInfo.aiAnalysis = { error: "Análise AI falhou para este arquivo" };
+    const lock = {};
+    const updateBar = (filename) => {
+      if (!lock.busy) {
+        lock.busy = true;
+        bar.update(done, { filename });
+        lock.busy = false;
       }
-      done++;
-      bar.update(done, { filename: fileInfo.path });
-    }
+    };
 
+    const scanConcurrency = parseInt(
+      process.env.NG_MIGRATE_SCAN_CONCURRENCY || "4",
+      10,
+    );
+    const limit = pLimit(scanConcurrency);
+    const startTime = Date.now();
+
+    const tasks = analysis.files.map((fileInfo) =>
+      limit(async () => {
+        updateBar(fileInfo.path);
+        try {
+          const absFilePath = path.join(absPath, fileInfo.path);
+          dbgFile(
+            "lendo",
+            fileInfo.path,
+            `${fs.statSync(absFilePath).size} bytes`,
+          );
+          const code = fs.readFileSync(absFilePath, "utf-8");
+          dbgAI(
+            "enviando",
+            "analysis",
+            `arquivo=${fileInfo.path} | ${code.length} chars`,
+          );
+          const raw = await analyzeWithAI(code, fileInfo.path, scanContext);
+          const ai = parseAnalyzeResponse(raw);
+          dbgAI(
+            "resposta",
+            "analysis",
+            `arquivo=${fileInfo.path} | complexidade=${ai.complexidade || "?"} | padrões=${ai.padroes?.length || 0}`,
+          );
+
+          fileInfo.aiAnalysis = {
+            complexity: ai.complexidade || fileInfo.complexity,
+            patterns: ai.padroes?.length ? ai.padroes : fileInfo.patterns,
+            problems: ai.problemas?.length ? ai.problemas : fileInfo.problems,
+            migrationOrder: ai.ordemSugerida || [],
+            summary: ai.resumo || "",
+            dependencies: ai.dependencias?.length
+              ? ai.dependencias
+              : fileInfo.dependencies,
+          };
+
+          if (ai.complexidade) fileInfo.complexity = ai.complexidade;
+        } catch (err) {
+          dbgAI("erro", "analysis", `arquivo=${fileInfo.path}: ${err.message}`);
+          fileInfo.aiAnalysis = { error: `Análise AI falhou: ${err.message}` };
+        }
+        done++;
+        updateBar(fileInfo.path);
+      }),
+    );
+
+    await Promise.all(tasks);
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     bar.stop();
     analysis.summary.aiAnalysisEnabled = true;
-    ui.success("Análise AI concluída");
+    analysis.summary.aiAnalysisElapsedSec = parseFloat(elapsed);
+    ui.success(
+      `Análise AI concluída em ${elapsed}s (${scanConcurrency} paralelo(s))`,
+    );
   }
 
   printSummary(analysis);
+
+  // ── Library migration report from package.json ──────────────────────────
+  const pkgPath = path.join(absPath, "package.json");
+  let libReport = null;
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      libReport = buildFullLibReport(pkg);
+      analysis.libReport = libReport;
+      printLibSummary(libReport);
+    } catch {
+      // package.json unreadable — silently skip
+    }
+  }
 
   if (!opts.noSave) {
     const saved = saveAnalysis(absPath, analysis);
@@ -177,7 +215,6 @@ export async function scanCommand(projectPath, opts) {
     ui.success(`Análise salva em:          ${chalk.cyan(saved.analysisFile)}`);
     ui.success(`Registro de símbolos:      ${chalk.cyan(saved.registryFile)}`);
     ui.success(`Grafo de dependências:     ${chalk.cyan(saved.graphFile)}`);
-
 
     const reg = analysis.registry;
     if (reg?.symbols?.length > 0) {
@@ -302,4 +339,78 @@ function printSummary(analysis) {
       );
     });
   }
+}
+
+/**
+ * Imprime o resumo do relatório de bibliotecas após o scan do projeto.
+ * @param {object} libReport - Resultado de buildFullLibReport()
+ */
+function printLibSummary(libReport) {
+  const { toReplace, toDrop, manual, unknown, totalDeps } = libReport;
+  const hasAny =
+    toReplace.length + toDrop.length + manual.length + unknown.length > 0;
+
+  ui.blank();
+  ui.section("Bibliotecas — Análise do package.json");
+
+  if (!hasAny) {
+    printKeyValue("Total de dependências:", String(totalDeps));
+    ui.info("Nenhuma biblioteca AngularJS identificada.");
+    return;
+  }
+
+  printKeyValue("Total de dependências:", String(totalDeps));
+  if (toReplace.length > 0)
+    printKeyValue(
+      chalk.green("  ✔ A substituir:"),
+      chalk.green(String(toReplace.length)),
+    );
+  if (toDrop.length > 0)
+    printKeyValue(
+      chalk.red("  ✖ A remover:"),
+      chalk.red(String(toDrop.length)),
+    );
+  if (manual.length > 0)
+    printKeyValue(
+      chalk.yellow("  ⚠ Migração manual:"),
+      chalk.yellow(String(manual.length)),
+    );
+  if (unknown.length > 0)
+    printKeyValue(
+      chalk.dim("  ? Sem mapeamento:"),
+      chalk.dim(String(unknown.length)),
+    );
+
+  if (toReplace.length > 0) {
+    ui.blank();
+    console.log(chalk.bold("  Substituições principais:"));
+    for (const lib of toReplace.slice(0, 8)) {
+      console.log(
+        `    ${chalk.red(lib.from)} → ${chalk.green(lib.to.join(", "))}`,
+      );
+    }
+    if (toReplace.length > 8) {
+      console.log(
+        chalk.dim(
+          `    ... e mais ${toReplace.length - 8} (use ng-migrate libs para ver tudo)`,
+        ),
+      );
+    }
+  }
+
+  if (toDrop.length > 0) {
+    ui.blank();
+    console.log(chalk.bold("  Serão removidas:"));
+    for (const lib of toDrop.slice(0, 6)) {
+      console.log(`    ${chalk.red("✖")} ${chalk.dim(lib.name)}`);
+    }
+    if (toDrop.length > 6) {
+      console.log(chalk.dim(`    ... e mais ${toDrop.length - 6}`));
+    }
+  }
+
+  ui.blank();
+  ui.info(
+    `Execute ${chalk.cyan("ng-migrate libs <pasta>")} para o relatório completo de bibliotecas.`,
+  );
 }

@@ -1,0 +1,8 @@
+{
+  "name": "angularjs-fixture-app",
+  "version": "1.0.0",
+  "dependencies": {
+    "angular": "^1.8.2",
+    "angular-route": "^1.8.2"
+  }
+}

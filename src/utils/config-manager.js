@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { encryptConfigKeys, decryptConfigKeys } from "./keychain.js";
 
 const CONFIG_DIR = path.join(os.homedir(), ".ng-migrate");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
@@ -93,18 +94,15 @@ export function loadConfig() {
     providers: { ...DEFAULT_CONFIG.providers },
   };
 
-
   try {
     if (fs.existsSync(CONFIG_FILE)) {
-      const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+      const raw = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+      const saved = decryptConfigKeys(raw);
       config.activeProvider = saved.activeProvider || config.activeProvider;
       config.providers = { ...config.providers, ...saved.providers };
       config.taskModels = saved.taskModels ? { ...saved.taskModels } : {};
     }
-  } catch {
-     
-  }
-
+  } catch {}
 
   const envMappings = [
     ["anthropic", "ANTHROPIC_API_KEY", { model: "claude-opus-4-5" }],
@@ -129,7 +127,6 @@ export function loadConfig() {
     }
   }
 
-
   if (
     config.providers["azure-openai"] &&
     !config.providers["azure-openai"].endpoint
@@ -145,7 +142,6 @@ export function loadConfig() {
         process.env.AZURE_OPENAI_API_VERSION;
   }
 
-
   if (process.env.OLLAMA_HOST && !config.providers.ollama?.endpoint) {
     config.providers.ollama = {
       model: "llama3",
@@ -153,7 +149,6 @@ export function loadConfig() {
       endpoint: process.env.OLLAMA_HOST,
     };
   }
-
 
   const activeCfg = config.providers[config.activeProvider];
   const activeOk =
@@ -187,14 +182,14 @@ export function saveConfig(config) {
   if (!fs.existsSync(CONFIG_DIR)) {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
   }
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
+  const encrypted = encryptConfigKeys(config);
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(encrypted, null, 2), "utf-8");
 }
 
 export function getProviderConfig(config, providerName) {
   return config.providers[providerName || config.activeProvider];
 }
 
- 
 function providerSpecificErrors(provider, provCfg) {
   const errors = [];
   if (provider === "azure-openai") {
@@ -215,7 +210,6 @@ function providerSpecificErrors(provider, provCfg) {
   return errors;
 }
 
- 
 export function assertReadyToMigrate() {
   let config;
   try {

@@ -31,15 +31,36 @@ export const NG_PATTERNS = [
 
 export const SKIP_PATTERNS = [
   /node_modules/,
-  /\.min\.js$/,
+  // Minified files (jQuery, Bootstrap, vendor bundles, etc.)
+  /\.min\.(js|css)$/,
+  /\.(bundle|packed|compiled)\.(js|css)$/,
+  // Build / output folders
   /dist\//,
   /coverage\//,
   /\.git\//,
   /\.angular\//,
   /e2e\//,
+  // Vendor / dependency folders (Bower, CDN copies)
+  /\/vendor\//,
+  /bower_components\//,
+  /public\/lib\//,
+  /assets\/lib\//,
+  /assets\/vendor\//,
+  /static\/vendor\//,
+  /static\/lib\//,
+  // Test / config scaffolding
   /\.spec\.(js|ts)$/,
   /karma\.conf/,
   /protractor/,
+  // Known large 3rd-party source files (non-user code)
+  /\bjquery[.-]/i,
+  /\bbootstrap[.-]/i,
+  /\blodash[.-]/i,
+  /\bunderscore[.-]/i,
+  /\bmoment[.-]/i,
+  /\bangular\.js$/i,
+  /\bangular-mocks\.js$/i,
+  /\bangular-locale/i,
 ];
 
 export function shouldSkip(relPath) {
