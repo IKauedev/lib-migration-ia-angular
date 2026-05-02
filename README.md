@@ -18,6 +18,7 @@
    - [config — Configurar provedor de IA](#config--configurar-provedor-de-ia)
    - [env — Gerenciar variáveis de ambiente](#env--gerenciar-variáveis-de-ambiente)
    - [scan — Analisar projeto](#scan--analisar-projeto)
+   - [libs — Relatório de bibliotecas](#libs--relatório-de-bibliotecas)
    - [start — Pipeline automático](#start--pipeline-automático)
    - [migrate-project — Migrar projeto local](#migrate-project--migrar-projeto-local)
    - [migrate-repo — Migrar repositório remoto](#migrate-repo--migrar-repositório-remoto)
@@ -25,15 +26,23 @@
    - [analyze — Analisar com IA](#analyze--analisar-com-ia)
    - [repl — Modo interativo](#repl--modo-interativo)
    - [checklist — Checklist de migração](#checklist--checklist-de-migração)
-6. [Fluxo de trabalho recomendado](#fluxo-de-trabalho-recomendado)
-7. [Arquivos gerados pelo scan](#arquivos-gerados-pelo-scan)
-8. [Estrutura de saída da migração](#estrutura-de-saída-da-migração)
-9. [O que é migrado automaticamente](#o-que-é-migrado-automaticamente)
-10. [Tokens de acesso](#tokens-de-acesso)
-11. [Executando no Windows](#executando-no-windows)
-12. [Configuração armazenada](#configuração-armazenada)
-13. [Arquitetura interna](#arquitetura-interna)
-14. [Requisitos](#requisitos)
+   - [watch — Monitorar e migrar em tempo real](#watch--monitorar-e-migrar-em-tempo-real)
+   - [doctor — Diagnóstico do ambiente](#doctor--diagnóstico-do-ambiente)
+6. [Funcionalidades avançadas](#funcionalidades-avançadas)
+   - [Filtro de arquivos vendor e minificados](#filtro-de-arquivos-vendor-e-minificados)
+   - [Estimativa de custo de tokens](#estimativa-de-custo-de-tokens)
+   - [Post-cleanup automático](#post-cleanup-automático)
+   - [Relatório HTML](#relatório-html)
+   - [Sistema de plugins](#sistema-de-plugins)
+7. [Fluxo de trabalho recomendado](#fluxo-de-trabalho-recomendado)
+8. [Arquivos gerados pelo scan](#arquivos-gerados-pelo-scan)
+9. [Estrutura de saída da migração](#estrutura-de-saída-da-migração)
+10. [O que é migrado automaticamente](#o-que-é-migrado-automaticamente)
+11. [Tokens de acesso](#tokens-de-acesso)
+12. [Executando no Windows](#executando-no-windows)
+13. [Configuração armazenada](#configuração-armazenada)
+14. [Arquitetura interna](#arquitetura-interna)
+15. [Requisitos](#requisitos)
 
 ---
 
@@ -489,6 +498,193 @@ O checklist inclui todos os passos necessários para uma migração bem-sucedida
 
 ---
 
+### `libs` — Relatório de bibliotecas
+
+Analisa o `package.json` do projeto e gera um relatório completo de migração de bibliotecas, categorizando cada dependência.
+
+```bash
+ng-migrate libs                # Analisa a pasta atual
+ng-migrate libs ./meu-projeto  # Analisa pasta específica
+ng-migrate libs --json         # Saída em JSON (útil para CI/scripts)
+ng-migrate libs --no-save      # Apenas exibe, não salva arquivo
+```
+
+**5 categorias de classificação:**
+
+| Símbolo | Categoria | Descrição |
+|---------|-----------|-----------|
+| ✔ | **A substituir** | Tem equivalente no Angular 21 |
+| ✖ | **A remover** | Obsoleta — não é necessária no Angular |
+| ⚠ | **Migração manual** | Requer atenção e adaptação humana |
+| ? | **Sem mapeamento** | Relacionada ao AngularJS mas sem mapeamento conhecido |
+| → | **Mantida** | Não é AngularJS — permanece no projeto |
+
+**Exemplos de substituições automáticas mapeadas:**
+
+| AngularJS | Angular 21 |
+|-----------|------------|
+| `angular-ui-router` | `@angular/router` |
+| `angular-animate` | `@angular/animations` |
+| `angular-material` | `@angular/material` |
+| `angular-translate` | `@ngx-translate/core` |
+| `restangular` | `@angular/common/http` |
+| `ui-select` | `@ng-select/ng-select` |
+
+**Arquivo salvo:** `.ng-migrate-libs.json` na raiz do projeto.
+
+> O comando `scan` também exibe um resumo automático das bibliotecas após varrer o projeto. Use `ng-migrate libs` para o relatório completo.
+
+---
+
+### `watch` — Monitorar e migrar em tempo real
+
+Monitora uma pasta e migra automaticamente cada arquivo AngularJS salvo, usando IA e aplicando post-cleanup.
+
+```bash
+ng-migrate watch                      # Monitora a pasta atual
+ng-migrate watch src/app              # Monitora pasta específica
+ng-migrate watch src --out dist/ng21  # Define pasta de saída
+ng-migrate watch --only .js           # Monitora apenas arquivos .js
+ng-migrate watch --dry-run            # Apenas loga as mudanças, sem migrar
+```
+
+**Opções:**
+
+| Opção | Padrão | Descrição |
+|-------|--------|-----------|
+| `[pasta]` | `.` (atual) | Pasta a monitorar |
+| `--out <pasta>` | `<pasta>-angular21` | Pasta de saída dos arquivos migrados |
+| `--only <ext>` | `.js` | Extensão a monitorar (ex: `.ts`, `.html`) |
+| `--dry-run` | — | Detecta mudanças mas não executa migração |
+
+> O `watch` usa `chokidar` internamente. Ao salvar um arquivo, ele é migrado imediatamente com post-cleanup aplicado. Ideal para refatoração incremental.
+
+---
+
+### `doctor` — Diagnóstico do ambiente
+
+Verifica se todos os requisitos do `ng-migrate` estão corretamente instalados e configurados.
+
+```bash
+ng-migrate doctor           # Diagnóstico completo
+ng-migrate doctor --ping    # Inclui teste de conectividade com a API de IA configurada
+```
+
+**Verificações realizadas:**
+
+| Verificação | O que valida |
+|-------------|-------------|
+| **Node.js ≥ 18** | Versão mínima suportada |
+| **Angular CLI** | Se `@angular/cli` está instalado globalmente |
+| **Git** | Se `git` está disponível no PATH |
+| **Configuração de IA** | Se existe provedor e API key configurados |
+| **Ping de IA** (`--ping`) | Envia uma requisição real à API para validar conectividade |
+
+Cada item exibe ✔ (ok), ✖ (falha) ou ⚠ (atenção), com a mensagem de correção quando aplicável.
+
+---
+
+## Funcionalidades avançadas
+
+### Filtro de arquivos vendor e minificados
+
+O `ng-migrate` ignora automaticamente arquivos que não devem ser migrados, **economizando tokens de IA** e acelerando o scan:
+
+**Padrões ignorados:**
+- Arquivos minificados: `*.min.js`, `*.min.css`, `*.bundle.js`, `*.packed.js`
+- Pastas de vendor: `vendor/`, `bower_components/`, `public/lib/`, `assets/lib/`, `assets/vendor/`, `static/lib/`
+- Bibliotecas conhecidas por nome: jQuery, Bootstrap, Lodash, Underscore, Moment.js, `angular.js`, `angular-mocks.js`
+- **Limite de tamanho:** arquivos maiores que **300 KB** são ignorados automaticamente
+
+Esses filtros se aplicam tanto ao `scan` quanto ao `migrate-project`.
+
+---
+
+### Estimativa de custo de tokens
+
+Antes de migrar projetos grandes, você pode estimar o custo de tokens de IA:
+
+```bash
+ng-migrate migrate-project --dry-run
+# O resumo exibe: arquivos × LOC estimada × custo estimado por provedor
+```
+
+**Modelos com precificação conhecida:**
+
+| Modelo | Input (1M tokens) | Output (1M tokens) |
+|--------|-------------------|---------------------|
+| `claude-opus-4-5` | $15 | $75 |
+| `claude-3-5-sonnet` | $3 | $15 |
+| `claude-3-haiku` | $0,25 | $1,25 |
+| `gpt-4o` | $2,50 | $10 |
+| `gpt-4o-mini` | $0,15 | $0,60 |
+| `gemini-2.0-flash` | $0,10 | $0,40 |
+
+---
+
+### Post-cleanup automático
+
+Após cada migração, o `ng-migrate` aplica **28 regras de correção automática** sobre o código gerado pela IA, garantindo compatibilidade com Angular 21:
+
+| Categoria | Exemplos de correções |
+|-----------|-----------------------|
+| **APIs obsoletas** | `angular.copy` → `structuredClone()`, `angular.extend` → `Object.assign()` |
+| **Imports** | Remove imports de `@angular/core` duplicados ou obsoletos |
+| **Sintaxe de templates** | `ng-if` → `@if`, `ng-for` → `@for`, `ng-switch` → `@switch` |
+| **Signals** | `this.value` → `this.value()` em contextos de signal |
+| **Decoradores** | Garante `standalone: true` em todos os componentes |
+
+O post-cleanup é executado automaticamente pelo `migrate-project`, `migrate` e `watch`.
+
+---
+
+### Relatório HTML
+
+Além do `MIGRATION_REPORT_*.md`, a migração pode gerar um **relatório HTML interativo**:
+
+```
+<projeto>-angular21/
+└── MIGRATION_REPORT_2026-05-02.html   ← relatório visual com gráficos
+```
+
+O HTML inclui: gráfico de complexidade por fase, lista de arquivos migrados, erros encontrados, taxa de sucesso e links para os arquivos gerados.
+
+---
+
+### Sistema de plugins
+
+O `ng-migrate` suporta um sistema de plugins para personalizar o comportamento da migração:
+
+**Estrutura de um plugin** (arquivo `.js` ou `.mjs`):
+
+```js
+export default {
+  // Regras adicionais de skip (além das padrão)
+  skipPatterns: [/meu-legado\.js$/],
+
+  // Regras de post-cleanup customizadas
+  cleanupRules: [
+    { pattern: /oldAPI\(/g, replacement: "newAPI(" }
+  ],
+
+  // Adições ao prompt da IA
+  promptAdditions: "Preserve comentários JSDoc em todos os métodos públicos.",
+
+  // Hook executado após cada arquivo migrado
+  async postProcess(filePath, content) {
+    return content.replace(/console\.log/g, "// console.log");
+  }
+};
+```
+
+**Uso:**
+
+```bash
+ng-migrate migrate-project --plugin ./meu-plugin.mjs
+```
+
+---
+
 ## Fluxo de trabalho recomendado
 
 ### Opção A — Pipeline automático (`start`)
@@ -775,6 +971,7 @@ ng-migrate scan
 | `<projeto>/.ng-migrate-analysis.json` | Análise estática do projeto |
 | `<projeto>/.ng-migrate-registry.json` | Mapa de símbolos e rotas |
 | `<projeto>/.ng-migrate-deps-graph.json` | Grafo de dependências entre arquivos |
+| `<projeto>/.ng-migrate-libs.json` | Relatório de bibliotecas do package.json (via `libs` ou `scan`) |
 | `<projeto>/.ng-migrate-cache.json` | Cache de arquivos já migrados (evita re-migração) |
 
 > Adicione os arquivos `.ng-migrate-*.json` ao `.gitignore` se não quiser versioná-los, ou mantenha-os para acelerar migrações futuras.
@@ -801,7 +998,10 @@ src/
 │   ├── migrate.js                # ng-migrate migrate <arquivo>
 │   ├── analyze.js                # ng-migrate analyze
 │   ├── repl.js                   # ng-migrate repl
-│   └── checklist.js              # ng-migrate checklist
+│   ├── checklist.js              # ng-migrate checklist
+│   ├── watch.js                  # ng-migrate watch (file watcher + migração automática)
+│   ├── doctor.js                 # ng-migrate doctor (diagnóstico do ambiente)
+│   └── libs.js                   # ng-migrate libs (relatório de bibliotecas)
 ├── core/
 │   ├── orchestrator.js           # MigrationOrchestrator — cache por hash, roteamento de modelos
 │   ├── context/
@@ -827,13 +1027,18 @@ src/
     ├── ai-providers.js           # Builders de clientes (compatibilidade)
     ├── ai.js                     # migrateWithAI(), analyzeWithAI()
     ├── config-manager.js         # loadConfig(), saveConfig(), PROVIDERS
+    ├── cost-estimator.js         # estimateMigrationCost() — precificação por modelo
     ├── debug.js                  # Modo debug (--debug)
     ├── deps-migrator.js          # Migração de package.json
     ├── env-loader.js             # Carrega ~/.ng-migrate/.env
     ├── git-providers.js          # GitHub/GitLab API wrappers
+    ├── html-report.js            # buildHtmlReport(), saveHtmlReport()
     ├── langchain-provider.js     # LangChain integration
+    ├── lib-mapper.js             # LIB_MAPPINGS, findMapping(), buildFullLibReport()
     ├── ng-checker.js             # Angular CLI install, git clone, ng new
     ├── parser.js                 # Extrai blocos de código das respostas da IA
+    ├── plugin-loader.js          # loadPlugin(), applyPluginRules(), shouldSkipFile()
+    ├── post-cleanup.js           # applyPostCleanup() — 28 regras de auto-correção
     ├── project-scanner.js        # Scanner legado (compat)
     ├── report.js                 # Geração de MIGRATION_REPORT_*.md
     └── ui.js                     # printBanner(), ui helpers, chalk
